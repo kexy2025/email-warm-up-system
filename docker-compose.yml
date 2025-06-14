@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=development
+      - DATABASE_URL=sqlite:///warmup.db
+      - SECRET_KEY=your-secret-key-here
+      - ENCRYPTION_KEY=your-encryption-key-here
+    volumes:
+      - .:/app
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+
+  worker:
+    build: .
+    command: celery -A app.celery worker --loglevel=info
+    environment:
+      - FLASK_ENV=development
+      - DATABASE_URL=sqlite:///warmup.db
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      - redis
+    volumes:
+      - .:/app
+
+volumes:
+  redis_data:
