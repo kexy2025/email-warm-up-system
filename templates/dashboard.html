@@ -215,12 +215,6 @@
         // Dashboard functionality
         let currentUser = null;
 
-        // Check if user is logged in
-        function checkAuth() {
-            // For demo purposes, we'll check session on each page load
-            loadDashboard();
-        }
-
         // Show/hide forms
         function showLoginForm() {
             document.getElementById('login-form').classList.remove('hidden');
@@ -243,6 +237,19 @@
             document.getElementById('auth-container').classList.remove('hidden');
             document.getElementById('dashboard-content').classList.add('hidden');
             document.getElementById('logout-btn').classList.add('hidden');
+        }
+
+        // Show notification
+        function showNotification(message, type) {
+            const container = document.getElementById('notification-container');
+            const notification = document.createElement('div');
+            notification.className = `p-4 mb-4 rounded-md ${type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`;
+            notification.textContent = message;
+            container.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.remove();
+            }, 3000);
         }
 
         // Login
@@ -376,6 +383,33 @@
             `).join('');
         }
 
+        // Campaign functions
+        async function startCampaign(campaignId) {
+            try {
+                const response = await fetch(`/api/campaigns/${campaignId}/start`, { method: 'POST' });
+                const data = await response.json();
+                if (data.success) {
+                    showNotification('Campaign started!', 'success');
+                    loadDashboard();
+                }
+            } catch (error) {
+                showNotification('Failed to start campaign', 'error');
+            }
+        }
+
+        async function pauseCampaign(campaignId) {
+            try {
+                const response = await fetch(`/api/campaigns/${campaignId}/pause`, { method: 'POST' });
+                const data = await response.json();
+                if (data.success) {
+                    showNotification('Campaign paused!', 'success');
+                    loadDashboard();
+                }
+            } catch (error) {
+                showNotification('Failed to pause campaign', 'error');
+            }
+        }
+
         // Campaign management
         document.getElementById('create-campaign-btn').addEventListener('click', () => {
             document.getElementById('create-campaign-modal').classList.remove('hidden');
@@ -448,4 +482,12 @@
                     document.getElementById('smtp-validation-result').classList.add('hidden');
                     loadDashboard();
                 } else {
-                    showNotification(data.
+                    showNotification(data.message, 'error');
+                }
+            } catch (error) {
+                showNotification('Failed to create campaign', 'error');
+            }
+        });
+    </script>
+</body>
+</html>
