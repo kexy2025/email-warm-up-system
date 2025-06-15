@@ -52,13 +52,16 @@
                         </label>
                         <input class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500" id="login-password" type="password" placeholder="Enter your password" required>
                     </div>
-                    <div class="flex items-center justify-between">
+                    <div class="flex items-center justify-between mb-4">
                         <button class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg focus:outline-none focus:shadow-outline w-full" type="submit">
                             <i class="fas fa-sign-in-alt mr-2"></i>Sign In
                         </button>
                     </div>
-                    <div class="text-center mt-4">
-                        <a class="inline-block align-baseline font-bold text-sm text-blue-600 hover:text-blue-800 cursor-pointer" onclick="showRegisterForm()">
+                    <div class="text-center space-y-2">
+                        <a class="block text-sm text-blue-600 hover:text-blue-800 cursor-pointer" onclick="showForgotPassword()">
+                            <i class="fas fa-key mr-1"></i>Forgot your password?
+                        </a>
+                        <a class="block text-sm text-blue-600 hover:text-blue-800 cursor-pointer" onclick="showRegisterForm()">
                             Need an account? <i class="fas fa-user-plus ml-1"></i>
                         </a>
                     </div>
@@ -94,16 +97,79 @@
                         <label class="block text-gray-700 text-sm font-bold mb-2">
                             <i class="fas fa-lock mr-2"></i>Password
                         </label>
-                        <input class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-green-500" id="register-password" type="password" placeholder="Create a password" required>
+                        <input class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-green-500" id="register-password" type="password" placeholder="Create a password (min 6 characters)" required>
+                        <p class="text-xs text-gray-500 mt-1">Password must be at least 6 characters long</p>
                     </div>
-                    <div class="flex items-center justify-between">
+                    <div class="flex items-center justify-between mb-4">
                         <button class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg focus:outline-none focus:shadow-outline w-full" type="submit">
                             <i class="fas fa-user-plus mr-2"></i>Create Account
                         </button>
                     </div>
-                    <div class="text-center mt-4">
-                        <a class="inline-block align-baseline font-bold text-sm text-blue-600 hover:text-blue-800 cursor-pointer" onclick="showLoginForm()">
+                    <div class="text-center">
+                        <a class="text-sm text-blue-600 hover:text-blue-800 cursor-pointer" onclick="showLoginForm()">
                             Already have an account? <i class="fas fa-sign-in-alt ml-1"></i>
+                        </a>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Forgot Password Form -->
+            <div id="forgot-password-form" class="hidden bg-white shadow-lg rounded-lg px-8 pt-6 pb-8 mb-4">
+                <div class="text-center mb-6">
+                    <i class="fas fa-key text-yellow-600 text-4xl mb-2"></i>
+                    <h2 class="text-2xl font-bold text-gray-900">Reset Password</h2>
+                    <p class="text-gray-600 text-sm">Enter your email to receive reset instructions</p>
+                </div>
+                <form id="forgot-password-form-element">
+                    <div class="mb-6">
+                        <label class="block text-gray-700 text-sm font-bold mb-2">
+                            <i class="fas fa-envelope mr-2"></i>Email Address
+                        </label>
+                        <input class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-yellow-500" id="forgot-email" type="email" placeholder="Enter your email address" required>
+                    </div>
+                    <div class="flex items-center justify-between mb-4">
+                        <button class="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-3 px-6 rounded-lg focus:outline-none focus:shadow-outline w-full" type="submit">
+                            <i class="fas fa-paper-plane mr-2"></i>Send Reset Instructions
+                        </button>
+                    </div>
+                    <div class="text-center">
+                        <a class="text-sm text-blue-600 hover:text-blue-800 cursor-pointer" onclick="showLoginForm()">
+                            <i class="fas fa-arrow-left mr-1"></i>Back to Login
+                        </a>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Reset Password Form -->
+            <div id="reset-password-form" class="hidden bg-white shadow-lg rounded-lg px-8 pt-6 pb-8 mb-4">
+                <div class="text-center mb-6">
+                    <i class="fas fa-lock text-purple-600 text-4xl mb-2"></i>
+                    <h2 class="text-2xl font-bold text-gray-900">Set New Password</h2>
+                    <p class="text-gray-600 text-sm">Enter your new password</p>
+                </div>
+                <form id="reset-password-form-element">
+                    <input type="hidden" id="reset-token" value="">
+                    <div class="mb-6">
+                        <label class="block text-gray-700 text-sm font-bold mb-2">
+                            <i class="fas fa-lock mr-2"></i>New Password
+                        </label>
+                        <input class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-purple-500" id="new-password" type="password" placeholder="Enter new password (min 6 characters)" required>
+                        <p class="text-xs text-gray-500 mt-1">Password must be at least 6 characters long</p>
+                    </div>
+                    <div class="mb-6">
+                        <label class="block text-gray-700 text-sm font-bold mb-2">
+                            <i class="fas fa-lock mr-2"></i>Confirm New Password
+                        </label>
+                        <input class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-purple-500" id="confirm-password" type="password" placeholder="Confirm new password" required>
+                    </div>
+                    <div class="flex items-center justify-between mb-4">
+                        <button class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-6 rounded-lg focus:outline-none focus:shadow-outline w-full" type="submit">
+                            <i class="fas fa-save mr-2"></i>Update Password
+                        </button>
+                    </div>
+                    <div class="text-center">
+                        <a class="text-sm text-blue-600 hover:text-blue-800 cursor-pointer" onclick="showLoginForm()">
+                            <i class="fas fa-arrow-left mr-1"></i>Back to Login
                         </a>
                     </div>
                 </form>
@@ -142,7 +208,7 @@
                             </div>
                             <div class="ml-5 w-0 flex-1">
                                 <dl>
-                                    <dt class="text-sm font-medium text-gray-500 truncate">Emails Sent Today</dt>
+                                    <dt class="text-sm font-medium text-gray-500 truncate">Emails Sent</dt>
                                     <dd class="text-2xl font-bold text-gray-900" id="emails-sent-today">0</dd>
                                 </dl>
                             </div>
@@ -189,7 +255,7 @@
 
             <!-- Campaign Management -->
             <div class="bg-white shadow-lg overflow-hidden sm:rounded-lg mb-8">
-                <div class="px-6 py-5 sm:px-6 flex justify-between items-center border-b border-gray-200">
+                <div class="px-6 py-5 border-b border-gray-200 flex justify-between items-center">
                     <div>
                         <h3 class="text-lg leading-6 font-medium text-gray-900">
                             <i class="fas fa-envelope-open-text mr-2"></i>Email Warmup Campaigns
@@ -200,7 +266,7 @@
                         <i class="fas fa-plus mr-2"></i>New Campaign
                     </button>
                 </div>
-                <div class="border-t border-gray-200">
+                <div>
                     <ul class="divide-y divide-gray-200" id="campaigns-list">
                         <!-- Campaigns will be loaded here -->
                     </ul>
@@ -223,136 +289,67 @@
                 </div>
                 
                 <form id="create-campaign-form">
-                    <!-- Step 1: Basic Information -->
-                    <div id="step-1" class="step-content">
-                        <h4 class="text-lg font-semibold mb-4 text-gray-800">
-                            <i class="fas fa-info-circle text-blue-500 mr-2"></i>Basic Information
-                        </h4>
-                        
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div class="mb-4">
-                                <label class="block text-gray-700 text-sm font-bold mb-2">
-                                    <i class="fas fa-tag mr-2"></i>Campaign Name
-                                </label>
-                                <input type="text" id="campaign-name" class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="My Email Warmup Campaign" required>
-                            </div>
-
-                            <div class="mb-4">
-                                <label class="block text-gray-700 text-sm font-bold mb-2">
-                                    <i class="fas fa-envelope mr-2"></i>Email Address
-                                </label>
-                                <input type="email" id="campaign-email" class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="your@email.com" required onchange="detectProvider()">
-                            </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                        <div>
+                            <label class="block text-gray-700 text-sm font-bold mb-2">
+                                <i class="fas fa-tag mr-2"></i>Campaign Name
+                            </label>
+                            <input type="text" id="campaign-name" class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="My Email Warmup Campaign" required>
                         </div>
 
-                        <!-- Provider Detection -->
-                        <div id="provider-detection" class="hidden mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
-                            <div class="flex items-center">
-                                <i class="fas fa-magic text-blue-600 mr-2"></i>
-                                <span class="text-blue-800 font-semibold">Provider Detected: </span>
-                                <span id="detected-provider" class="text-blue-900 ml-1"></span>
-                            </div>
+                        <div>
+                            <label class="block text-gray-700 text-sm font-bold mb-2">
+                                <i class="fas fa-envelope mr-2"></i>Email Address
+                            </label>
+                            <input type="email" id="campaign-email" class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="your@email.com" required onchange="detectProvider()">
                         </div>
                     </div>
 
-                    <!-- Step 2: Email Provider Configuration -->
-                    <div id="step-2" class="step-content">
-                        <h4 class="text-lg font-semibold mb-4 text-gray-800">
-                            <i class="fas fa-server text-green-500 mr-2"></i>Email Provider Configuration
-                        </h4>
+                    <div class="mb-4">
+                        <label class="block text-gray-700 text-sm font-bold mb-2">
+                            <i class="fas fa-cloud mr-2"></i>Email Provider
+                        </label>
+                        <select id="campaign-provider" class="shadow border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500" onchange="updateProviderConfig()">
+                            <option value="auto">Auto-detect from email</option>
+                            <option value="gmail">Gmail</option>
+                            <option value="outlook">Outlook/Hotmail</option>
+                            <option value="yahoo">Yahoo Mail</option>
+                            <option value="aws_ses">AWS SES</option>
+                            <option value="custom">Custom SMTP</option>
+                        </select>
+                    </div>
 
-                        <div class="mb-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                        <div>
                             <label class="block text-gray-700 text-sm font-bold mb-2">
-                                <i class="fas fa-cloud mr-2"></i>Email Provider
+                                <i class="fas fa-server mr-2"></i>SMTP Host
                             </label>
-                            <select id="campaign-provider" class="shadow border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500" onchange="updateProviderConfig()">
-                                <option value="auto">Auto-detect from email</option>
-                                <option value="gmail">Gmail</option>
-                                <option value="outlook">Outlook/Hotmail</option>
-                                <option value="yahoo">Yahoo Mail</option>
-                                <option value="aws_ses">AWS SES</option>
-                                <option value="sendgrid">SendGrid</option>
-                                <option value="mailgun">Mailgun</option>
-                                <option value="postmark">Postmark</option>
-                                <option value="sparkpost">SparkPost</option>
-                                <option value="zoho">Zoho Mail</option>
-                                <option value="custom">Custom SMTP</option>
+                            <input type="text" id="smtp-host" class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="smtp.gmail.com">
+                        </div>
+
+                        <div>
+                            <label class="block text-gray-700 text-sm font-bold mb-2">
+                                <i class="fas fa-plug mr-2"></i>SMTP Port
+                            </label>
+                            <select id="smtp-port" class="shadow border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <option value="587">587 (TLS)</option>
+                                <option value="465">465 (SSL)</option>
+                                <option value="25">25 (Unsecured)</option>
                             </select>
                         </div>
 
-                        <!-- OAuth Option -->
-                        <div id="oauth-section" class="hidden mb-4 p-4 bg-green-50 rounded-lg border border-green-200">
-                            <div class="flex items-center justify-between">
-                                <div>
-                                    <h5 class="font-semibold text-green-800">
-                                        <i class="fas fa-shield-alt mr-2"></i>OAuth2 Authentication (Recommended)
-                                    </h5>
-                                    <p class="text-sm text-green-700">Secure authentication without sharing passwords</p>
-                                </div>
-                                <button type="button" id="oauth-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">
-                                    <i class="fas fa-link mr-2"></i>Connect OAuth
-                                </button>
-                            </div>
-                        </div>
-
-                        <!-- SMTP Configuration -->
-                        <div id="smtp-config" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div class="mb-4">
-                                <label class="block text-gray-700 text-sm font-bold mb-2">
-                                    <i class="fas fa-server mr-2"></i>SMTP Host
-                                </label>
-                                <input type="text" id="smtp-host" class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="smtp.gmail.com">
-                            </div>
-
-                            <div class="mb-4">
-                                <label class="block text-gray-700 text-sm font-bold mb-2">
-                                    <i class="fas fa-plug mr-2"></i>SMTP Port
-                                </label>
-                                <select id="smtp-port" class="shadow border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500">
-                                    <option value="587">587 (TLS)</option>
-                                    <option value="465">465 (SSL)</option>
-                                    <option value="25">25 (Unsecured)</option>
-                                    <option value="2525">2525 (Alternative)</option>
-                                </select>
-                            </div>
-
-                            <div class="mb-4">
-                                <label class="block text-gray-700 text-sm font-bold mb-2">
-                                    <i class="fas fa-user mr-2"></i>SMTP Username
-                                </label>
-                                <input type="text" id="smtp-username" class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Usually your email address">
-                            </div>
-
-                            <div class="mb-4">
-                                <label class="block text-gray-700 text-sm font-bold mb-2">
-                                    <i class="fas fa-key mr-2"></i>SMTP Password
-                                </label>
-                                <input type="password" id="smtp-password" class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Your email password or app password">
-                            </div>
-                        </div>
-
-                        <!-- AWS SES Region Selection -->
-                        <div id="aws-region-section" class="hidden mb-4">
+                        <div>
                             <label class="block text-gray-700 text-sm font-bold mb-2">
-                                <i class="fas fa-globe mr-2"></i>AWS Region
+                                <i class="fas fa-user mr-2"></i>SMTP Username
                             </label>
-                            <select id="aws-region" class="shadow border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500">
-                                <option value="us-east-1">US East (N. Virginia)</option>
-                                <option value="us-west-2">US West (Oregon)</option>
-                                <option value="eu-west-1">Europe (Ireland)</option>
-                                <option value="eu-central-1">Europe (Frankfurt)</option>
-                                <option value="ap-southeast-1">Asia Pacific (Singapore)</option>
-                                <option value="ap-southeast-2">Asia Pacific (Sydney)</option>
-                                <option value="ap-northeast-1">Asia Pacific (Tokyo)</option>
-                            </select>
+                            <input type="text" id="smtp-username" class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Usually your email address">
                         </div>
 
-                        <!-- Setup Instructions -->
-                        <div id="setup-instructions" class="hidden mb-4 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
-                            <h5 class="font-semibold text-yellow-800 mb-2">
-                                <i class="fas fa-lightbulb mr-2"></i>Setup Instructions
-                            </h5>
-                            <div id="instructions-content" class="text-sm text-yellow-700"></div>
+                        <div>
+                            <label class="block text-gray-700 text-sm font-bold mb-2">
+                                <i class="fas fa-key mr-2"></i>SMTP Password
+                            </label>
+                            <input type="password" id="smtp-password" class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Your email password or app password">
                         </div>
                     </div>
 
@@ -361,9 +358,6 @@
 
                     <!-- Modal Actions -->
                     <div class="flex justify-between items-center pt-6 border-t border-gray-200">
-                        <div class="flex space-x-2">
-                            <span id="step-indicator" class="text-sm text-gray-500">Step 1 of 2</span>
-                        </div>
                         <div class="flex space-x-3">
                             <button type="button" id="cancel-campaign-btn" class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg">
                                 <i class="fas fa-times mr-2"></i>Cancel
@@ -371,10 +365,10 @@
                             <button type="button" id="validate-smtp-btn" class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded-lg">
                                 <i class="fas fa-check-circle mr-2"></i>Validate SMTP
                             </button>
-                            <button type="submit" id="save-campaign-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg" disabled>
-                                <i class="fas fa-save mr-2"></i>Create Campaign
-                            </button>
                         </div>
+                        <button type="submit" id="save-campaign-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg" disabled>
+                            <i class="fas fa-save mr-2"></i>Create Campaign
+                        </button>
                     </div>
                 </form>
             </div>
@@ -389,7 +383,7 @@
         <div class="bg-white p-6 rounded-lg shadow-lg">
             <div class="flex items-center">
                 <i class="fas fa-spinner fa-spin text-blue-600 text-2xl mr-3"></i>
-                <span class="text-gray-700 font-medium">Validating SMTP credentials...</span>
+                <span class="text-gray-700 font-medium">Processing...</span>
             </div>
         </div>
     </div>
@@ -397,18 +391,45 @@
     <script>
         // Dashboard functionality
         let currentUser = null;
-        let currentStep = 1;
         let smtpValidated = false;
+
+        // Check URL parameters for reset token
+        window.addEventListener('load', function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const resetToken = urlParams.get('token');
+            
+            if (resetToken) {
+                document.getElementById('reset-token').value = resetToken;
+                showResetPasswordForm();
+            }
+        });
 
         // Show/hide forms
         function showLoginForm() {
+            hideAllForms();
             document.getElementById('login-form').classList.remove('hidden');
-            document.getElementById('register-form').classList.add('hidden');
         }
 
         function showRegisterForm() {
-            document.getElementById('login-form').classList.add('hidden');
+            hideAllForms();
             document.getElementById('register-form').classList.remove('hidden');
+        }
+
+        function showForgotPassword() {
+            hideAllForms();
+            document.getElementById('forgot-password-form').classList.remove('hidden');
+        }
+
+        function showResetPasswordForm() {
+            hideAllForms();
+            document.getElementById('reset-password-form').classList.remove('hidden');
+        }
+
+        function hideAllForms() {
+            document.getElementById('login-form').classList.add('hidden');
+            document.getElementById('register-form').classList.add('hidden');
+            document.getElementById('forgot-password-form').classList.add('hidden');
+            document.getElementById('reset-password-form').classList.add('hidden');
         }
 
         function showDashboard() {
@@ -437,16 +458,7 @@
                 });
 
                 const data = await response.json();
-                
-                // Update provider selection
-                document.getElementById('campaign-provider').value = data.provider;
-                
-                // Show detection result
-                document.getElementById('detected-provider').textContent = data.provider.replace('_', ' ').toUpperCase();
-                document.getElementById('provider-detection').classList.remove('hidden');
-                
-                // Update configuration
-                updateProviderConfig(data.config, data.setup_instructions);
+                updateProviderConfig(data.config);
                 
             } catch (error) {
                 console.error('Provider detection failed:', error);
@@ -454,76 +466,14 @@
         }
 
         // Update provider configuration
-        function updateProviderConfig(config = null, instructions = null) {
+        function updateProviderConfig(config = null) {
             const provider = document.getElementById('campaign-provider').value;
             
-            // Show/hide OAuth option
-            const oauthSection = document.getElementById('oauth-section');
-            if (config && config.oauth_enabled) {
-                oauthSection.classList.remove('hidden');
-                document.getElementById('oauth-btn').onclick = () => startOAuth(provider);
-            } else {
-                oauthSection.classList.add('hidden');
-            }
-            
-            // Show/hide AWS region selection
-            const awsSection = document.getElementById('aws-region-section');
-            if (provider === 'aws_ses') {
-                awsSection.classList.remove('hidden');
-                updateAWSConfig();
-            } else {
-                awsSection.classList.add('hidden');
-            }
-            
-            // Update SMTP fields
             if (config) {
                 document.getElementById('smtp-host').value = config.smtp_host || '';
                 document.getElementById('smtp-port').value = config.smtp_port || 587;
                 document.getElementById('smtp-username').value = document.getElementById('campaign-email').value || '';
             }
-            
-            // Show setup instructions
-            if (instructions) {
-                showSetupInstructions(instructions);
-            }
-        }
-
-        // Update AWS SES configuration
-        function updateAWSConfig() {
-            const region = document.getElementById('aws-region').value;
-            const smtpHost = `email-smtp.${region}.amazonaws.com`;
-            document.getElementById('smtp-host').value = smtpHost;
-        }
-
-        // Show setup instructions
-        function showSetupInstructions(instructions) {
-            const instructionsDiv = document.getElementById('setup-instructions');
-            const contentDiv = document.getElementById('instructions-content');
-            
-            let html = `<h6 class="font-semibold mb-2">${instructions.title}</h6><ul class="list-disc list-inside space-y-1">`;
-            instructions.steps.forEach(step => {
-                html += `<li>${step}</li>`;
-            });
-            html += '</ul>';
-            
-            contentDiv.innerHTML = html;
-            instructionsDiv.classList.remove('hidden');
-        }
-
-        // OAuth integration
-        function startOAuth(provider) {
-            const oauthWindow = window.open(`/oauth/start/${provider}`, 'oauth', 'width=600,height=600');
-            
-            // Listen for OAuth completion
-            const checkClosed = setInterval(() => {
-                if (oauthWindow.closed) {
-                    clearInterval(checkClosed);
-                    showNotification('OAuth authentication completed!', 'success');
-                    // Enable OAuth mode
-                    smtpValidated = true;
-                    document.getElementById('save-campaign-btn').disabled = false;
-                }
-            }, 1000);
         }
 
         // Show notification
@@ -564,4 +514,45 @@
         }
 
         // Login
-        document.getElementById('
+        document.getElementById('login-form-element').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('login-email').value;
+            const password = document.getElementById('login-password').value;
+
+            try {
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password }),
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    currentUser = data.user;
+                    document.getElementById('user-info').textContent = `Welcome, ${data.user.username}`;
+                    showNotification(data.message, 'success');
+                    showDashboard();
+                } else {
+                    showNotification(data.message, 'error');
+                }
+            } catch (error) {
+                showNotification('Login failed. Please try again.', 'error');
+            }
+        });
+
+        // Register
+        document.getElementById('register-form-element').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('register-username').value;
+            const email = document.getElementById('register-email').value;
+            const password = document.getElementById('register-password').value;
+
+            if (password.length < 6) {
+                showNotification('Password must be at least 6 characters long', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/register', {
+                    method: 'POST
