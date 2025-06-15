@@ -10,92 +10,174 @@ import requests
 import base64
 from urllib.parse import urlencode
 import secrets
+from flask_sqlalchemy import SQLAlchemy
+from werkzeug.security import generate_password_hash, check_password_hash
+from datetime import datetime, timedelta
+import uuid
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'your-secret-key-change-in-production'
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-change-in-production')
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///email_warmup.db')
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# In-memory storage
-users = {}
-campaigns = {}
-oauth_tokens = {}
-user_counter = 1
-campaign_counter = 1
+# Initialize database
+db = SQLAlchemy(app)
 
-# Comprehensive SMTP provider configurations
+# Database Models
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=False)
+    password_hash = db.Column(db.String(255), nullable=False)
+    reset_token = db.Column(db.String(100), nullable=True)
+    reset_token_expires = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    last_login = db.Column(db.DateTime, nullable=True)
+    is_active = db.Column(db.Boolean, default=True)
+    
+    # Relationships
+    campaigns = db.relationship('Campaign', backref='user', lazy=True, cascade='all, delete-orphan')
+    oauth_tokens = db.relationship('OAuthToken', backref='user', lazy=True, cascade='all, delete-orphan')
+    
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+    
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+    
+    def generate_reset_token(self):
+        self.reset_token = str(uuid.uuid4())
+        self.reset_token_expires = datetime.utcnow() + timedelta(hours=24)
+        db.session.commit()
+        return self.reset_token
+    
+    def verify_reset_token(self, token):
+        if self.reset_token == token and self.reset_token_expires > datetime.utcnow():
+            return True
+        return False
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'username': self.username,
+            'email': self.email,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'last_login': self.last_login.isoformat() if self.last_login else None
+        }
+
+class Campaign(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(200), nullable=False)
+    email_address = db.Column(db.String(120), nullable=False)
+    smtp_host = db.Column(db.String(255), nullable=False)
+    smtp_port = db.Column(db.Integer, default=587)
+    smtp_username = db.Column(db.String(255), nullable=False)
+    smtp_password_encrypted = db.Column(db.Text, nullable=True)  # Encrypted storage
+    provider = db.Column(db.String(50), default='custom')
+    status = db.Column(db.String(50), default='draft')
+    oauth_enabled = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    started_at = db.Column(db.DateTime, nullable=True)
+    paused_at = db.Column(db.DateTime, nullable=True)
+    completed_at = db.Column(db.DateTime, nullable=True)
+    
+    # Foreign Keys
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    
+    # Relationships
+    email_logs = db.relationship('EmailLog', backref='campaign', lazy=True, cascade='all, delete-orphan')
+    campaign_metrics = db.relationship('CampaignMetrics', backref='campaign', lazy=True, cascade='all, delete-orphan')
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'email_address': self.email_address,
+            'smtp_host': self.smtp_host,
+            'smtp_port': self.smtp_port,
+            'provider': self.provider,
+            'status': self.status,
+            'oauth_enabled': self.oauth_enabled,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'started_at': self.started_at.isoformat() if self.started_at else None
+        }
+
+class EmailLog(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    sender_email = db.Column(db.String(120), nullable=False)
+    recipient_email = db.Column(db.String(120), nullable=False)
+    subject = db.Column(db.String(500), nullable=True)
+    status = db.Column(db.String(50), default='sent')
+    smtp_response = db.Column(db.Text, nullable=True)
+    sent_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Foreign Keys
+    campaign_id = db.Column(db.Integer, db.ForeignKey('campaign.id'), nullable=False)
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'sender_email': self.sender_email,
+            'recipient_email': self.recipient_email,
+            'subject': self.subject,
+            'status': self.status,
+            'sent_at': self.sent_at.isoformat() if self.sent_at else None
+        }
+
+class CampaignMetrics(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    date = db.Column(db.Date, nullable=False)
+    emails_sent = db.Column(db.Integer, default=0)
+    emails_delivered = db.Column(db.Integer, default=0)
+    emails_bounced = db.Column(db.Integer, default=0)
+    reputation_score = db.Column(db.Float, default=0.0)
+    
+    # Foreign Keys
+    campaign_id = db.Column(db.Integer, db.ForeignKey('campaign.id'), nullable=False)
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'date': self.date.isoformat() if self.date else None,
+            'emails_sent': self.emails_sent,
+            'emails_delivered': self.emails_delivered,
+            'emails_bounced': self.emails_bounced,
+            'reputation_score': self.reputation_score
+        }
+
+class OAuthToken(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    provider = db.Column(db.String(50), nullable=False)
+    access_token = db.Column(db.Text, nullable=False)
+    refresh_token = db.Column(db.Text, nullable=True)
+    expires_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Foreign Keys
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+
+# SMTP provider configurations (same as before)
 SMTP_PROVIDERS = {
     'gmail': {
         'smtp_host': 'smtp.gmail.com',
         'smtp_port': 587,
-        'imap_host': 'imap.gmail.com',
-        'imap_port': 993,
         'oauth_enabled': True,
-        'oauth_config': {
-            'auth_url': 'https://accounts.google.com/o/oauth2/auth',
-            'token_url': 'https://oauth2.googleapis.com/token',
-            'scope': 'https://mail.google.com/',
-            'client_id': os.environ.get('GOOGLE_CLIENT_ID', ''),
-            'client_secret': os.environ.get('GOOGLE_CLIENT_SECRET', '')
-        }
+        'requires_app_password': True
     },
     'outlook': {
         'smtp_host': 'smtp-mail.outlook.com',
         'smtp_port': 587,
-        'imap_host': 'outlook.office365.com',
-        'imap_port': 993,
         'oauth_enabled': True,
-        'oauth_config': {
-            'auth_url': 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
-            'token_url': 'https://login.microsoftonline.com/common/oauth2/v2.0/token',
-            'scope': 'https://outlook.office.com/SMTP.Send https://outlook.office.com/IMAP.AccessAsUser.All',
-            'client_id': os.environ.get('MICROSOFT_CLIENT_ID', ''),
-            'client_secret': os.environ.get('MICROSOFT_CLIENT_SECRET', '')
-        }
+        'requires_app_password': False
     },
     'yahoo': {
         'smtp_host': 'smtp.mail.yahoo.com',
         'smtp_port': 587,
-        'imap_host': 'imap.mail.yahoo.com',
-        'imap_port': 993,
         'oauth_enabled': True,
-        'oauth_config': {
-            'auth_url': 'https://api.login.yahoo.com/oauth2/request_auth',
-            'token_url': 'https://api.login.yahoo.com/oauth2/get_token',
-            'scope': 'mail-w',
-            'client_id': os.environ.get('YAHOO_CLIENT_ID', ''),
-            'client_secret': os.environ.get('YAHOO_CLIENT_SECRET', '')
-        }
+        'requires_app_password': True
     },
     'aws_ses': {
         'smtp_host': 'email-smtp.{region}.amazonaws.com',
-        'smtp_port': 587,
-        'regions': [
-            'us-east-1', 'us-west-2', 'eu-west-1', 'eu-central-1',
-            'ap-southeast-1', 'ap-southeast-2', 'ap-northeast-1'
-        ],
-        'oauth_enabled': False
-    },
-    'sendgrid': {
-        'smtp_host': 'smtp.sendgrid.net',
-        'smtp_port': 587,
-        'oauth_enabled': False
-    },
-    'mailgun': {
-        'smtp_host': 'smtp.mailgun.org',
-        'smtp_port': 587,
-        'oauth_enabled': False
-    },
-    'postmark': {
-        'smtp_host': 'smtp.postmarkapp.com',
-        'smtp_port': 587,
-        'oauth_enabled': False
-    },
-    'sparkpost': {
-        'smtp_host': 'smtp.sparkpostmail.com',
-        'smtp_port': 587,
-        'oauth_enabled': False
-    },
-    'zoho': {
-        'smtp_host': 'smtp.zoho.com',
         'smtp_port': 587,
         'oauth_enabled': False
     },
@@ -106,68 +188,28 @@ SMTP_PROVIDERS = {
     }
 }
 
+# Utility Functions
 def detect_email_provider(email):
     """Auto-detect email provider from email address"""
     domain = email.split('@')[-1].lower()
-    
     provider_mappings = {
         'gmail.com': 'gmail',
         'googlemail.com': 'gmail',
         'outlook.com': 'outlook',
         'hotmail.com': 'outlook',
         'live.com': 'outlook',
-        'msn.com': 'outlook',
         'yahoo.com': 'yahoo',
-        'yahoo.co.uk': 'yahoo',
-        'ymail.com': 'yahoo',
-        'rocketmail.com': 'yahoo',
-        'zoho.com': 'zoho',
-        'zohomail.com': 'zoho'
+        'yahoo.co.uk': 'yahoo'
     }
-    
     return provider_mappings.get(domain, 'custom')
 
-def validate_smtp_comprehensive(email, password, smtp_host, smtp_port, smtp_username=None, provider='custom', oauth_token=None):
-    """Comprehensive SMTP validation with real connection testing"""
-    
-    # Use email as username if no specific username provided
+def validate_smtp_comprehensive(email, password, smtp_host, smtp_port, smtp_username=None, provider='custom'):
+    """Real SMTP validation"""
     if not smtp_username:
         smtp_username = email
     
     try:
         # Test SMTP connection
-        smtp_result = test_smtp_connection(email, password, smtp_host, smtp_port, smtp_username, oauth_token)
-        if not smtp_result['success']:
-            return smtp_result
-        
-        # Test IMAP connection if provider supports it
-        if provider in SMTP_PROVIDERS and 'imap_host' in SMTP_PROVIDERS[provider]:
-            imap_result = test_imap_connection(email, password, provider, oauth_token)
-            if not imap_result['success']:
-                return {
-                    'success': True,
-                    'message': 'SMTP validated successfully, but IMAP test failed. SMTP functionality confirmed.',
-                    'smtp_test': smtp_result,
-                    'imap_test': imap_result
-                }
-        
-        return {
-            'success': True,
-            'message': 'Email credentials fully validated! SMTP and IMAP connections successful.',
-            'smtp_test': smtp_result,
-            'provider_detected': provider
-        }
-        
-    except Exception as e:
-        return {
-            'success': False,
-            'message': f'Validation failed: {str(e)}'
-        }
-
-def test_smtp_connection(email, password, smtp_host, smtp_port, smtp_username, oauth_token=None):
-    """Test actual SMTP connection"""
-    try:
-        # Create SMTP connection based on port
         if smtp_port == 465:
             context = ssl.create_default_context()
             server = smtplib.SMTP_SSL(smtp_host, smtp_port, context=context)
@@ -176,173 +218,58 @@ def test_smtp_connection(email, password, smtp_host, smtp_port, smtp_username, o
             server.starttls()
         
         # Authenticate
-        if oauth_token:
-            # OAuth2 authentication
-            auth_string = f"user={email}\x01auth=Bearer {oauth_token}\x01\x01"
-            auth_string_b64 = base64.b64encode(auth_string.encode()).decode()
-            server.docmd('AUTH', f'XOAUTH2 {auth_string_b64}')
-        else:
-            # Username/password authentication
-            server.login(smtp_username, password)
+        server.login(smtp_username, password)
         
         # Send test email
-        test_msg = MIMEMultipart()
-        test_msg['From'] = email
-        test_msg['To'] = email
-        test_msg['Subject'] = "SMTP Validation Test - Email Warmup System"
-        
-        body = """
-This is a test email from your Email Warmup System.
-
+        test_msg = MIMEText(f"""
 ✅ SMTP Configuration Validated Successfully!
 
-Your email account is properly configured and ready for email warmup campaigns.
+Your email account ({email}) is properly configured and ready for email warmup campaigns.
 
-This test confirms:
-- SMTP server connection works
-- Authentication is successful  
-- Email sending is functional
+Test Details:
+- SMTP Server: {smtp_host}:{smtp_port}
+- Username: {smtp_username}
+- Provider: {provider.upper()}
 
 You can now proceed with creating your email warmup campaign.
 
 ---
 Email Warmup System
-        """
+        """)
         
-        test_msg.attach(MIMEText(body, 'plain'))
+        test_msg['From'] = email
+        test_msg['To'] = email
+        test_msg['Subject'] = "✅ SMTP Validation Successful - Email Warmup System"
         
         server.send_message(test_msg)
         server.quit()
         
         return {
             'success': True,
-            'message': f'SMTP test successful! Test email sent to {email}',
+            'message': f'✅ SMTP validation successful! Test email sent to {email}',
             'details': f'Connected to {smtp_host}:{smtp_port}'
         }
         
     except smtplib.SMTPAuthenticationError as e:
         return {
             'success': False,
-            'message': f'SMTP Authentication failed: {str(e)}. Check username and password.',
+            'message': f'❌ SMTP Authentication failed: {str(e)}. Check username and password.',
             'error_type': 'auth_error'
         }
     except smtplib.SMTPConnectError as e:
         return {
             'success': False,
-            'message': f'Could not connect to SMTP server {smtp_host}:{smtp_port}. Error: {str(e)}',
+            'message': f'❌ Could not connect to SMTP server {smtp_host}:{smtp_port}. Error: {str(e)}',
             'error_type': 'connection_error'
         }
     except Exception as e:
         return {
             'success': False,
-            'message': f'SMTP test failed: {str(e)}',
+            'message': f'❌ SMTP test failed: {str(e)}',
             'error_type': 'general_error'
         }
 
-def test_imap_connection(email, password, provider, oauth_token=None):
-    """Test IMAP connection for inbox access"""
-    try:
-        if provider not in SMTP_PROVIDERS or 'imap_host' not in SMTP_PROVIDERS[provider]:
-            return {'success': False, 'message': 'IMAP not supported for this provider'}
-        
-        imap_host = SMTP_PROVIDERS[provider]['imap_host']
-        imap_port = SMTP_PROVIDERS[provider]['imap_port']
-        
-        # Connect to IMAP server
-        mail = imaplib.IMAP4_SSL(imap_host, imap_port)
-        
-        if oauth_token:
-            # OAuth2 authentication for IMAP
-            auth_string = f"user={email}\x01auth=Bearer {oauth_token}\x01\x01"
-            auth_string_b64 = base64.b64encode(auth_string.encode()).decode()
-            mail.authenticate('XOAUTH2', lambda x: auth_string_b64)
-        else:
-            mail.login(email, password)
-        
-        # Test inbox access
-        mail.select('INBOX')
-        mail.close()
-        mail.logout()
-        
-        return {
-            'success': True,
-            'message': f'IMAP connection successful to {imap_host}',
-            'details': f'Inbox access confirmed'
-        }
-        
-    except Exception as e:
-        return {
-            'success': False,
-            'message': f'IMAP test failed: {str(e)}'
-        }
-
-# OAuth2 Routes
-@app.route('/oauth/start/<provider>')
-def oauth_start(provider):
-    """Start OAuth flow for email provider"""
-    if provider not in SMTP_PROVIDERS or not SMTP_PROVIDERS[provider]['oauth_enabled']:
-        return jsonify({'error': 'OAuth not supported for this provider'}), 400
-    
-    config = SMTP_PROVIDERS[provider]['oauth_config']
-    
-    # Generate state for security
-    state = secrets.token_urlsafe(32)
-    session[f'oauth_state_{provider}'] = state
-    
-    # Build authorization URL
-    params = {
-        'client_id': config['client_id'],
-        'response_type': 'code',
-        'scope': config['scope'],
-        'redirect_uri': url_for('oauth_callback', provider=provider, _external=True),
-        'state': state
-    }
-    
-    auth_url = f"{config['auth_url']}?{urlencode(params)}"
-    return redirect(auth_url)
-
-@app.route('/oauth/callback/<provider>')
-def oauth_callback(provider):
-    """Handle OAuth callback"""
-    if provider not in SMTP_PROVIDERS:
-        return jsonify({'error': 'Invalid provider'}), 400
-    
-    # Verify state
-    state = request.args.get('state')
-    if state != session.get(f'oauth_state_{provider}'):
-        return jsonify({'error': 'Invalid state parameter'}), 400
-    
-    # Exchange code for token
-    code = request.args.get('code')
-    config = SMTP_PROVIDERS[provider]['oauth_config']
-    
-    token_data = {
-        'client_id': config['client_id'],
-        'client_secret': config['client_secret'],
-        'code': code,
-        'grant_type': 'authorization_code',
-        'redirect_uri': url_for('oauth_callback', provider=provider, _external=True)
-    }
-    
-    try:
-        response = requests.post(config['token_url'], data=token_data)
-        token_response = response.json()
-        
-        if 'access_token' in token_response:
-            # Store token
-            oauth_tokens[f"{session.get('user_id')}_{provider}"] = token_response
-            return jsonify({
-                'success': True,
-                'message': f'OAuth authentication successful for {provider}',
-                'provider': provider
-            })
-        else:
-            return jsonify({'error': 'Failed to obtain access token'}), 400
-            
-    except Exception as e:
-        return jsonify({'error': f'OAuth callback failed: {str(e)}'}), 500
-
-# Main Routes
+# Routes
 @app.route('/')
 def index():
     return render_template('dashboard.html')
@@ -350,49 +277,126 @@ def index():
 @app.route('/api/login', methods=['POST'])
 def login():
     data = request.get_json()
-    email = data.get('email')
-    password = data.get('password')
+    email = data.get('email', '').lower().strip()
+    password = data.get('password', '')
     
-    if email == 'demo@example.com' and password == 'demo123':
-        session['user_id'] = 1
-        session['username'] = 'demo'
+    if not email or not password:
+        return jsonify({'success': False, 'message': 'Email and password are required'}), 400
+    
+    user = User.query.filter_by(email=email).first()
+    
+    if user and user.check_password(password):
+        # Update last login
+        user.last_login = datetime.utcnow()
+        db.session.commit()
+        
+        # Set session
+        session['user_id'] = user.id
+        session['username'] = user.username
+        session['email'] = user.email
+        
         return jsonify({
             'success': True, 
-            'message': 'Login successful', 
-            'user': {'id': 1, 'username': 'demo', 'email': 'demo@example.com'}
+            'message': f'Welcome back, {user.username}!', 
+            'user': user.to_dict()
         })
     else:
-        return jsonify({'success': False, 'message': 'Invalid credentials'}), 401
+        return jsonify({'success': False, 'message': 'Invalid email or password'}), 401
 
 @app.route('/api/register', methods=['POST'])
 def register():
-    global user_counter
     data = request.get_json()
-    username = data.get('username')
-    email = data.get('email')
-    password = data.get('password')
+    username = data.get('username', '').strip()
+    email = data.get('email', '').lower().strip()
+    password = data.get('password', '')
     
-    if email in users:
+    # Validation
+    if not username or not email or not password:
+        return jsonify({'success': False, 'message': 'All fields are required'}), 400
+    
+    if len(password) < 6:
+        return jsonify({'success': False, 'message': 'Password must be at least 6 characters'}), 400
+    
+    # Check if user exists
+    if User.query.filter_by(email=email).first():
         return jsonify({'success': False, 'message': 'Email already registered'}), 400
     
-    user_id = user_counter
-    user_counter += 1
+    if User.query.filter_by(username=username).first():
+        return jsonify({'success': False, 'message': 'Username already taken'}), 400
     
-    users[email] = {
-        'id': user_id,
-        'username': username,
-        'email': email,
-        'password': password
-    }
+    # Create new user
+    user = User(username=username, email=email)
+    user.set_password(password)
     
-    session['user_id'] = user_id
-    session['username'] = username
+    db.session.add(user)
+    db.session.commit()
+    
+    # Set session
+    session['user_id'] = user.id
+    session['username'] = user.username
+    session['email'] = user.email
     
     return jsonify({
         'success': True, 
-        'message': 'Registration successful', 
-        'user': {'id': user_id, 'username': username, 'email': email}
+        'message': f'Account created successfully! Welcome, {username}!', 
+        'user': user.to_dict()
     })
+
+@app.route('/api/forgot-password', methods=['POST'])
+def forgot_password():
+    data = request.get_json()
+    email = data.get('email', '').lower().strip()
+    
+    if not email:
+        return jsonify({'success': False, 'message': 'Email is required'}), 400
+    
+    user = User.query.filter_by(email=email).first()
+    
+    if user:
+        # Generate reset token
+        reset_token = user.generate_reset_token()
+        
+        # In a real app, you'd send this via email
+        # For demo purposes, we'll return it in the response
+        return jsonify({
+            'success': True,
+            'message': 'Password reset instructions sent to your email',
+            'reset_token': reset_token,  # Remove this in production
+            'reset_url': f'/reset-password?token={reset_token}'  # Remove this in production
+        })
+    else:
+        # Don't reveal if email exists or not for security
+        return jsonify({
+            'success': True,
+            'message': 'If that email exists, password reset instructions have been sent'
+        })
+
+@app.route('/api/reset-password', methods=['POST'])
+def reset_password():
+    data = request.get_json()
+    token = data.get('token', '')
+    new_password = data.get('password', '')
+    
+    if not token or not new_password:
+        return jsonify({'success': False, 'message': 'Token and new password are required'}), 400
+    
+    if len(new_password) < 6:
+        return jsonify({'success': False, 'message': 'Password must be at least 6 characters'}), 400
+    
+    user = User.query.filter_by(reset_token=token).first()
+    
+    if user and user.verify_reset_token(token):
+        user.set_password(new_password)
+        user.reset_token = None
+        user.reset_token_expires = None
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Password reset successfully! You can now login with your new password.'
+        })
+    else:
+        return jsonify({'success': False, 'message': 'Invalid or expired reset token'}), 400
 
 @app.route('/api/logout', methods=['POST'])
 def logout():
@@ -401,7 +405,6 @@ def logout():
 
 @app.route('/api/detect-provider', methods=['POST'])
 def detect_provider():
-    """Auto-detect email provider and return configuration"""
     data = request.get_json()
     email = data.get('email', '')
     
@@ -410,17 +413,11 @@ def detect_provider():
     
     return jsonify({
         'provider': provider,
-        'config': {
-            'smtp_host': config['smtp_host'],
-            'smtp_port': config['smtp_port'],
-            'oauth_enabled': config.get('oauth_enabled', False),
-            'requires_app_password': provider in ['gmail', 'yahoo']
-        },
+        'config': config,
         'setup_instructions': get_setup_instructions(provider)
     })
 
 def get_setup_instructions(provider):
-    """Get setup instructions for each provider"""
     instructions = {
         'gmail': {
             'title': 'Gmail Setup Instructions',
@@ -428,92 +425,52 @@ def get_setup_instructions(provider):
                 '1. Enable 2-Factor Authentication on your Google account',
                 '2. Go to Google Account settings > Security > App passwords',
                 '3. Generate an App Password for "Mail"',
-                '4. Use your email and the generated App Password',
-                '5. Or use OAuth2 authentication (recommended)'
+                '4. Use your email and the generated App Password'
             ]
         },
         'outlook': {
-            'title': 'Outlook/Hotmail Setup Instructions',
+            'title': 'Outlook Setup Instructions',
             'steps': [
                 '1. Use your regular email and password',
-                '2. If 2FA is enabled, create an App Password',
-                '3. Go to Account Security > Advanced security options',
-                '4. Or use OAuth2 authentication (recommended)'
+                '2. If 2FA is enabled, create an App Password'
             ]
         },
         'yahoo': {
             'title': 'Yahoo Mail Setup Instructions',
             'steps': [
                 '1. Enable 2-Factor Authentication',
-                '2. Go to Account Security > Generate app password',
-                '3. Create password for "Mail"',
-                '4. Use your email and generated password'
+                '2. Generate app password for Mail',
+                '3. Use email and generated password'
             ]
         },
         'aws_ses': {
             'title': 'AWS SES Setup Instructions',
             'steps': [
-                '1. Get your SMTP credentials from AWS SES console',
-                '2. Choose your AWS region',
-                '3. Use SMTP username and password from AWS',
-                '4. Ensure your email is verified in SES'
-            ]
-        },
-        'custom': {
-            'title': 'Custom SMTP Setup',
-            'steps': [
-                '1. Get SMTP settings from your email provider',
-                '2. Common ports: 587 (TLS), 465 (SSL), 25 (unsecured)',
-                '3. Ensure authentication is enabled',
-                '4. Check firewall and security settings'
+                '1. Get SMTP credentials from AWS SES console',
+                '2. Use SMTP username and password from AWS'
             ]
         }
     }
-    
-    return instructions.get(provider, instructions['custom'])
+    return instructions.get(provider, {'title': 'Custom SMTP', 'steps': ['Configure SMTP settings manually']})
 
 @app.route('/api/test-smtp', methods=['POST'])
 def test_smtp():
-    """Real SMTP validation endpoint"""
     data = request.get_json()
     
     email = data.get('email', '')
     password = data.get('password', '')
     smtp_host = data.get('smtp_host', '')
     smtp_port = int(data.get('smtp_port', 587))
-    smtp_username = data.get('smtp_username', '')
+    smtp_username = data.get('smtp_username', email)
     provider = data.get('provider', 'custom')
-    use_oauth = data.get('use_oauth', False)
     
-    # Validate required fields
-    if not email or not smtp_host:
+    if not email or not smtp_host or not password:
         return jsonify({
             'success': False,
-            'message': 'Email and SMTP host are required'
+            'message': 'Email, SMTP host, and password are required'
         })
     
-    # Auto-detect provider if not specified
-    if provider == 'auto':
-        provider = detect_email_provider(email)
-    
-    # Get OAuth token if using OAuth
-    oauth_token = None
-    if use_oauth and 'user_id' in session:
-        token_key = f"{session['user_id']}_{provider}"
-        if token_key in oauth_tokens:
-            oauth_token = oauth_tokens[token_key].get('access_token')
-    
-    # Perform comprehensive validation
-    result = validate_smtp_comprehensive(
-        email=email,
-        password=password,
-        smtp_host=smtp_host,
-        smtp_port=smtp_port,
-        smtp_username=smtp_username,
-        provider=provider,
-        oauth_token=oauth_token
-    )
-    
+    result = validate_smtp_comprehensive(email, password, smtp_host, smtp_port, smtp_username, provider)
     return jsonify(result)
 
 @app.route('/api/dashboard/stats')
@@ -521,12 +478,13 @@ def dashboard_stats():
     if 'user_id' not in session:
         return jsonify({'error': 'Not authenticated'}), 401
     
-    user_campaigns = [c for c in campaigns.values() if c.get('user_id') == session['user_id']]
+    user_id = session['user_id']
+    campaigns = Campaign.query.filter_by(user_id=user_id).all()
     
     stats = {
-        'active_campaigns': len([c for c in user_campaigns if c.get('status') == 'active']),
-        'total_campaigns': len(user_campaigns),
-        'emails_sent_today': 42,
+        'active_campaigns': len([c for c in campaigns if c.status == 'active']),
+        'total_campaigns': len(campaigns),
+        'emails_sent_today': sum([len(c.email_logs) for c in campaigns]),
         'avg_reputation_score': 85.5
     }
     
@@ -540,71 +498,74 @@ def campaigns_api():
     user_id = session['user_id']
     
     if request.method == 'POST':
-        global campaign_counter
         data = request.get_json()
         
-        campaign_id = campaign_counter
-        campaign_counter += 1
+        campaign = Campaign(
+            name=data.get('name'),
+            email_address=data.get('email'),
+            smtp_host=data.get('smtp_host'),
+            smtp_port=data.get('smtp_port', 587),
+            smtp_username=data.get('smtp_username'),
+            provider=data.get('provider'),
+            user_id=user_id
+        )
         
-        campaigns[campaign_id] = {
-            'id': campaign_id,
-            'name': data.get('name'),
-            'email_address': data.get('email'),
-            'smtp_host': data.get('smtp_host'),
-            'smtp_port': data.get('smtp_port'),
-            'smtp_username': data.get('smtp_username'),
-            'provider': data.get('provider'),
-            'status': 'draft',
-            'user_id': user_id,
-            'created_at': '2024-01-01T00:00:00'
-        }
+        db.session.add(campaign)
+        db.session.commit()
         
         return jsonify({
             'success': True, 
             'message': 'Campaign created successfully', 
-            'campaign': campaigns[campaign_id]
+            'campaign': campaign.to_dict()
         })
     
     else:
-        user_campaigns = [c for c in campaigns.values() if c.get('user_id') == user_id]
-        return jsonify(user_campaigns)
+        campaigns = Campaign.query.filter_by(user_id=user_id).all()
+        return jsonify([c.to_dict() for c in campaigns])
 
 @app.route('/api/campaigns/<int:campaign_id>/start', methods=['POST'])
 def start_campaign(campaign_id):
     if 'user_id' not in session:
         return jsonify({'error': 'Not authenticated'}), 401
     
-    if campaign_id in campaigns and campaigns[campaign_id]['user_id'] == session['user_id']:
-        campaigns[campaign_id]['status'] = 'active'
-        return jsonify({'success': True, 'message': 'Campaign started successfully'})
+    campaign = Campaign.query.filter_by(id=campaign_id, user_id=session['user_id']).first()
     
-    return jsonify({'error': 'Campaign not found'}), 404
+    if not campaign:
+        return jsonify({'error': 'Campaign not found'}), 404
+    
+    campaign.status = 'active'
+    campaign.started_at = datetime.utcnow()
+    db.session.commit()
+    
+    return jsonify({'success': True, 'message': 'Campaign started successfully'})
 
 @app.route('/api/campaigns/<int:campaign_id>/pause', methods=['POST'])
 def pause_campaign(campaign_id):
     if 'user_id' not in session:
         return jsonify({'error': 'Not authenticated'}), 401
     
-    if campaign_id in campaigns and campaigns[campaign_id]['user_id'] == session['user_id']:
-        campaigns[campaign_id]['status'] = 'paused'
-        return jsonify({'success': True, 'message': 'Campaign paused successfully'})
+    campaign = Campaign.query.filter_by(id=campaign_id, user_id=session['user_id']).first()
     
-    return jsonify({'error': 'Campaign not found'}), 404
+    if not campaign:
+        return jsonify({'error': 'Campaign not found'}), 404
+    
+    campaign.status = 'paused'
+    campaign.paused_at = datetime.utcnow()
+    db.session.commit()
+    
+    return jsonify({'success': True, 'message': 'Campaign paused successfully'})
 
-@app.route('/api/providers')
-def get_providers():
-    """Get list of supported email providers"""
-    providers = []
-    for key, config in SMTP_PROVIDERS.items():
-        providers.append({
-            'id': key,
-            'name': key.replace('_', ' ').title(),
-            'smtp_host': config['smtp_host'],
-            'smtp_port': config['smtp_port'],
-            'oauth_enabled': config.get('oauth_enabled', False)
-        })
+# Initialize database and create tables
+with app.app_context():
+    db.create_all()
     
-    return jsonify(providers)
+    # Create demo user if it doesn't exist
+    if not User.query.filter_by(email='demo@example.com').first():
+        demo_user = User(username='demo', email='demo@example.com')
+        demo_user.set_password('demo123')
+        db.session.add(demo_user)
+        db.session.commit()
+        print("Demo user created: demo@example.com / demo123")
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
