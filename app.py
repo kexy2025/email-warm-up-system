@@ -51,10 +51,21 @@ class User(db.Model):
     is_active = db.Column(db.Boolean, default=True)
     
     def check_password(self, password):
-        return check_password_hash(self.password_hash, password)
+        try:
+            result = check_password_hash(self.password_hash, password)
+            logger.info(f"Password check for {self.email}: {result}")
+            return result
+        except Exception as e:
+            logger.error(f"Password check error for {self.email}: {e}")
+            return False
     
     def set_password(self, password):
-        self.password_hash = generate_password_hash(password)
+        try:
+            # Use a consistent method for password hashing
+            self.password_hash = generate_password_hash(password, method='pbkdf2:sha256')
+            logger.info(f"Password set for {self.email}")
+        except Exception as e:
+            logger.error(f"Password set error for {self.email}: {e}")
     
     def generate_reset_token(self):
         self.reset_token = str(uuid.uuid4())
@@ -236,11 +247,28 @@ def index():
         return render_template('dashboard.html')
     except Exception as e:
         logger.error(f"Template error: {e}")
-        return f"<h1>Email Warmup System</h1><p>Dashboard loading...</p><p>Error: {e}</p>"
+        return f"<h1>KEXY Email Warmup System</h1><p>Dashboard loading...</p><p>Error: {e}</p>"
 
 @app.route('/health')
 def health():
     return jsonify({'status': 'healthy', 'message': 'Application is running'})
+
+@app.route('/api/debug/users')
+def debug_users():
+    """Debug endpoint to check users in database"""
+    try:
+        users = User.query.all()
+        user_list = []
+        for user in users:
+            user_list.append({
+                'id': user.id,
+                'username': user.username,
+                'email': user.email,
+                'created_at': user.created_at.isoformat() if user.created_at else None
+            })
+        return jsonify({'users': user_list, 'count': len(user_list)})
+    except Exception as e:
+        return jsonify({'error': str(e)})
 
 @app.route('/api/login', methods=['POST'])
 def login():
@@ -249,18 +277,32 @@ def login():
         email = data.get('email', '').lower().strip()
         password = data.get('password', '')
         
+        logger.info(f"Login attempt for email: {email}")
+        
         if not email or not password:
             return jsonify({'success': False, 'message': 'Email and password are required'}), 400
         
+        # Find user by email
         user = User.query.filter_by(email=email).first()
         
-        if user and user.check_password(password):
+        if not user:
+            logger.warning(f"User not found: {email}")
+            return jsonify({'success': False, 'message': 'Invalid email or password'}), 401
+        
+        logger.info(f"User found: {user.email}, checking password...")
+        
+        # Check password
+        if user.check_password(password):
+            # Successful login
             user.last_login = datetime.utcnow()
             db.session.commit()
             
+            # Set session
             session['user_id'] = user.id
             session['username'] = user.username
             session['email'] = user.email
+            
+            logger.info(f"Successful login for: {email}")
             
             return jsonify({
                 'success': True, 
@@ -268,10 +310,12 @@ def login():
                 'user': user.to_dict()
             })
         else:
+            logger.warning(f"Password check failed for: {email}")
             return jsonify({'success': False, 'message': 'Invalid email or password'}), 401
+            
     except Exception as e:
-        logger.error(f"Login error: {e}")
-        return jsonify({'success': False, 'message': 'Login failed'}), 500
+        logger.error(f"Login error: {str(e)}")
+        return jsonify({'success': False, 'message': f'Login failed: {str(e)}'}), 500
 
 @app.route('/api/register', methods=['POST'])
 def register():
@@ -280,6 +324,8 @@ def register():
         username = data.get('username', '').strip()
         email = data.get('email', '').lower().strip()
         password = data.get('password', '')
+        
+        logger.info(f"Registration attempt for email: {email}")
         
         if not username or not email or not password:
             return jsonify({'success': False, 'message': 'All fields are required'}), 400
@@ -293,12 +339,16 @@ def register():
         if User.query.filter_by(username=username).first():
             return jsonify({'success': False, 'message': 'Username already taken'}), 400
         
+        # Create new user
         user = User(username=username, email=email)
         user.set_password(password)
         
         db.session.add(user)
         db.session.commit()
         
+        logger.info(f"User registered successfully: {email}")
+        
+        # Set session
         session['user_id'] = user.id
         session['username'] = user.username
         session['email'] = user.email
@@ -309,9 +359,9 @@ def register():
             'user': user.to_dict()
         })
     except Exception as e:
-        logger.error(f"Registration error: {e}")
+        logger.error(f"Registration error: {str(e)}")
         db.session.rollback()
-        return jsonify({'success': False, 'message': 'Registration failed'}), 500
+        return jsonify({'success': False, 'message': f'Registration failed: {str(e)}'}), 500
 
 @app.route('/api/forgot-password', methods=['POST'])
 def forgot_password():
@@ -338,7 +388,7 @@ def forgot_password():
                 'message': 'If that email exists, password reset instructions have been sent'
             })
     except Exception as e:
-        logger.error(f"Forgot password error: {e}")
+        logger.error(f"Forgot password error: {str(e)}")
         return jsonify({'success': False, 'message': 'Request failed'}), 500
 
 @app.route('/api/reset-password', methods=['POST'])
@@ -369,7 +419,7 @@ def reset_password():
         else:
             return jsonify({'success': False, 'message': 'Invalid or expired reset token'}), 400
     except Exception as e:
-        logger.error(f"Reset password error: {e}")
+        logger.error(f"Reset password error: {str(e)}")
         return jsonify({'success': False, 'message': 'Reset failed'}), 500
 
 @app.route('/api/logout', methods=['POST'])
@@ -392,7 +442,7 @@ def detect_provider():
             'setup_instructions': get_setup_instructions(provider)
         })
     except Exception as e:
-        logger.error(f"Provider detection error: {e}")
+        logger.error(f"Provider detection error: {str(e)}")
         return jsonify({'error': 'Provider detection failed'}), 500
 
 @app.route('/api/test-smtp', methods=['POST'])
@@ -416,7 +466,7 @@ def test_smtp():
         result = validate_smtp_comprehensive(email, password, smtp_host, smtp_port, smtp_username, provider)
         return jsonify(result)
     except Exception as e:
-        logger.error(f"SMTP test error: {e}")
+        logger.error(f"SMTP test error: {str(e)}")
         return jsonify({'success': False, 'message': 'SMTP test failed'}), 500
 
 @app.route('/api/dashboard/stats')
@@ -437,7 +487,7 @@ def dashboard_stats():
         
         return jsonify(stats)
     except Exception as e:
-        logger.error(f"Dashboard stats error: {e}")
+        logger.error(f"Dashboard stats error: {str(e)}")
         return jsonify({'error': 'Failed to load stats'}), 500
 
 @app.route('/api/campaigns', methods=['GET', 'POST'])
@@ -475,7 +525,7 @@ def campaigns_api():
             campaigns = Campaign.query.filter_by(user_id=user_id).all()
             return jsonify([c.to_dict() for c in campaigns])
     except Exception as e:
-        logger.error(f"Campaigns error: {e}")
+        logger.error(f"Campaigns error: {str(e)}")
         return jsonify({'error': 'Campaign operation failed'}), 500
 
 # Initialize database with error handling
@@ -490,6 +540,13 @@ try:
             db.session.add(demo_user)
             db.session.commit()
             print("Demo user created: demo@example.com / demo123")
+        
+        # Check if your user exists and recreate if needed
+        test_email = 'scott@getkexy.com'  # Replace with your actual email
+        existing_user = User.query.filter_by(email=test_email).first()
+        if existing_user:
+            print(f"User {test_email} exists in database")
+        
 except Exception as e:
     print(f"Database initialization error: {e}")
 
