@@ -46,8 +46,8 @@ limiter = Limiter(
 )
 
 # Encryption
-ENCRYPTION_KEY = os.environ.get('ENCRYPTION_KEY', Fernet.generate_key()).encode()
-cipher_suite = Fernet(ENCRYPTION_KEY)
+ENCRYPTION_KEY = os.environ.get('ENCRYPTION_KEY', Fernet.generate_key().decode())
+cipher_suite = Fernet(ENCRYPTION_KEY.encode())
 
 # Initialize database
 db = SQLAlchemy(app)
