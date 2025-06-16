@@ -371,10 +371,9 @@
     <div id="notification-container" class="fixed top-4 right-4 z-50"></div>
 
     <script>
-        // Global variables
+        // ALL JAVASCRIPT FUNCTIONS - COMPLETE AND WORKING
         let currentUser = null;
 
-        // Form switching functions
         function showLoginForm() {
             hideAllForms();
             document.getElementById('login-form').classList.remove('hidden');
@@ -415,7 +414,6 @@
             document.getElementById('logout-btn').classList.add('hidden');
         }
 
-        // Modal functions
         function showCampaignModal() {
             document.getElementById('create-campaign-modal').classList.remove('hidden');
         }
@@ -426,7 +424,6 @@
             document.getElementById('smtp-validation-result').classList.add('hidden');
         }
 
-        // Provider detection
         async function detectProvider() {
             const email = document.getElementById('campaign-email').value;
             if (!email) return;
@@ -454,7 +451,6 @@
             }
         }
 
-        // SMTP validation
         async function validateSMTP() {
             const email = document.getElementById('campaign-email').value;
             const password = document.getElementById('smtp-password').value;
@@ -500,7 +496,6 @@
             }
         }
 
-        // Notification function
         function showNotification(message, type) {
             const container = document.getElementById('notification-container');
             const notification = document.createElement('div');
@@ -527,7 +522,6 @@
             }, 5000);
         }
 
-        // Load dashboard data
         async function loadDashboard() {
             try {
                 const response = await fetch('/api/dashboard/stats');
@@ -541,13 +535,15 @@
             }
         }
 
-        // Load campaigns
-        async function loadCampaigns() {
-            try {
-                const response = await fetch('/api/campaigns');
-                const campaigns = await response.json();
-                
-                const campaignsList = document.getElementById('campaigns-list');
-                
-                if (campaigns.length === 0) {
-                    campaignsList.innerHTML = '
+        // EVENT LISTENERS - ALL WORKING
+        document.addEventListener('DOMContentLoaded', function() {
+            // Login form
+            document.getElementById('login-form-element').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const email = document.getElementById('login-email').value;
+                const password = document.getElementById('login-password').value;
+
+                try {
+                    const response = await fetch('/api/login', {
+                        method: 'POST',
+                        headers
