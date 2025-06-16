@@ -43,7 +43,6 @@ class User(db.Model):
     last_login = db.Column(db.DateTime, nullable=True)
     is_active = db.Column(db.Boolean, default=True)
     
-    # Relationship with login tokens
     login_tokens = db.relationship('LoginToken', backref='user', lazy=True, cascade="all, delete-orphan")
     
     def check_password(self, password):
@@ -53,7 +52,7 @@ class User(db.Model):
         self.password_hash = generate_password_hash(password)
     
     def create_login_token(self, remember_me=False):
-        """Create a new persistent login token"""
+        """Create persistent login token"""
         self.cleanup_expired_tokens()
         
         raw_token = secrets.token_urlsafe(32)
@@ -77,7 +76,7 @@ class User(db.Model):
         return raw_token
     
     def cleanup_expired_tokens(self):
-        """Remove expired tokens for this user"""
+        """Remove expired tokens"""
         LoginToken.query.filter(
             LoginToken.user_id == self.id,
             LoginToken.expires_at < datetime.utcnow()
@@ -85,7 +84,7 @@ class User(db.Model):
         db.session.commit()
     
     def revoke_all_tokens(self):
-        """Revoke all login tokens (for logout)"""
+        """Revoke all login tokens"""
         LoginToken.query.filter(LoginToken.user_id == self.id).delete()
         db.session.commit()
     
@@ -99,7 +98,7 @@ class User(db.Model):
         }
 
 class LoginToken(db.Model):
-    """Persistent login tokens for remember me functionality"""
+    """Persistent login tokens"""
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     token_hash = db.Column(db.String(64), nullable=False, index=True)
@@ -109,7 +108,7 @@ class LoginToken(db.Model):
     
     @staticmethod
     def find_valid_token(token):
-        """Find a valid, non-expired token"""
+        """Find valid token"""
         token_hash = hashlib.sha256(token.encode()).hexdigest()
         return LoginToken.query.filter(
             LoginToken.token_hash == token_hash,
@@ -117,7 +116,7 @@ class LoginToken(db.Model):
         ).first()
     
     def update_last_used(self):
-        """Update the last used timestamp"""
+        """Update last used timestamp"""
         self.last_used = datetime.utcnow()
         db.session.commit()
 
@@ -199,36 +198,30 @@ SMTP_PROVIDERS = {
     }
 }
 
-# Authentication Helper Functions
+# Authentication Functions
 def get_current_user():
-    """Get the current authenticated user from session or token"""
-    # First try session-based authentication
+    """Get current authenticated user"""
     if 'user_id' in session:
         user = User.query.get(session['user_id'])
         if user and user.is_active:
             return user
     
-    # Try token-based authentication
     token = request.cookies.get('remember_token')
     if token:
         login_token = LoginToken.find_valid_token(token)
         if login_token:
             user = User.query.get(login_token.user_id)
             if user and user.is_active:
-                # Update session for this request
                 session['user_id'] = user.id
                 session['username'] = user.username
                 session['email'] = user.email
-                
-                # Update last used time
                 login_token.update_last_used()
-                
                 return user
     
     return None
 
 def login_required(f):
-    """Decorator to require authentication"""
+    """Authentication decorator"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
         user = get_current_user()
@@ -238,7 +231,7 @@ def login_required(f):
     return decorated_function
 
 def login_user(user, remember_me=False):
-    """Login a user with session and optional persistent token"""
+    """Login user with optional persistent token"""
     user.last_login = datetime.utcnow()
     db.session.commit()
     
@@ -268,7 +261,7 @@ def login_user(user, remember_me=False):
     return response
 
 def logout_user():
-    """Logout current user and clear all tokens"""
+    """Logout user and clear tokens"""
     user = get_current_user()
     if user:
         user.revoke_all_tokens()
@@ -299,8 +292,7 @@ def detect_email_provider(email):
         return 'custom'
 
 def is_aws_ses_smtp_username(username):
-    """Check if username looks like AWS SES SMTP credentials"""
-    # AWS SES SMTP usernames are 20 character alphanumeric strings
+    """Check if username is AWS SES SMTP format"""
     return bool(re.match(r'^[A-Z0-9]{20}$', username))
 
 def validate_smtp_comprehensive(email, password, smtp_host, smtp_port, smtp_username=None, provider='custom'):
@@ -337,7 +329,7 @@ def validate_smtp_comprehensive(email, password, smtp_host, smtp_port, smtp_user
                     ]
                 }
         
-        # Test DNS resolution first
+        # Test DNS resolution
         try:
             socket.gethostbyname(smtp_host)
             logger.info(f"✅ DNS resolution successful for {smtp_host}")
@@ -354,7 +346,7 @@ def validate_smtp_comprehensive(email, password, smtp_host, smtp_port, smtp_user
                 ]
             }
         
-        # Test SMTP connection with longer timeout
+        # Test SMTP connection
         logger.info(f"🔌 Attempting SMTP connection to {smtp_host}:{smtp_port}")
         
         if smtp_port == 465:
@@ -468,7 +460,7 @@ def index():
 
 @app.route('/api/check-auth')
 def check_auth():
-    """Check if user is authenticated"""
+    """Check authentication status"""
     user = get_current_user()
     if user:
         return jsonify({
@@ -643,9 +635,9 @@ def dashboard_stats():
     except Exception as e:
         return jsonify({'error': 'Failed to load stats'})
 
-# Background task to cleanup expired tokens
+# Token cleanup
 def cleanup_expired_tokens():
-    """Remove all expired tokens from database"""
+    """Remove expired tokens"""
     try:
         expired_count = LoginToken.query.filter(
             LoginToken.expires_at < datetime.utcnow()
@@ -657,14 +649,14 @@ def cleanup_expired_tokens():
         logger.error(f"Token cleanup error: {e}")
         db.session.rollback()
 
-# Initialize database and create demo user
+# Initialize database
 with app.app_context():
     db.create_all()
     
-    # Cleanup expired tokens on startup
+    # Cleanup tokens on startup
     cleanup_expired_tokens()
     
-    # Create demo user if it doesn't exist
+    # Create demo user
     if not User.query.filter_by(email='demo@example.com').first():
         demo_user = User(username='demo', email='demo@example.com')
         demo_user.set_password('demo123')
@@ -675,51 +667,3 @@ with app.app_context():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port, debug=False)
-Now let me save these files to your AI Drive:
-
-Using Tool
-|
-AI Drive
-Get URL: /email-warmup-system
-View
-Using Tool
-|
-AI Drive
-Listing directory: /
-View
-Perfect! Now let me provide you with the FINAL SOLUTION - I'll create the complete fixed files in your existing /email-warmup-system directory:
-
-Using Tool
-|
-AI Drive
-Downloading file to /email-warmup-system
-View
-Let me provide you with the IMMEDIATE SOLUTION to fix your SMTP validation issues:
-
-🚨 CRITICAL FIXES NEEDED:
-Issue 1: Missing Amazon SES in Frontend
-Your frontend dropdown needs to include "Amazon SES" option.
-
-Issue 2: SMTP Validation Logic
-The current validation doesn't properly handle AWS SES credentials.
-
-📝 IMMEDIATE FIXES TO APPLY:
-1. Fix the Frontend Dashboard HTML
-In your templates/dashboard.html, find this section and replace it:
-
-Copy<!-- REPLACE THIS PROVIDER DROPDOWN -->
-<select id="campaign-provider" class="shadow border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500">
-    <option value="gmail">Gmail</option>
-    <option value="outlook">Outlook/Hotmail</option>
-    <option value="yahoo">Yahoo Mail</option>
-    <option value="custom">Custom SMTP</option>
-</select>
-
-<!-- WITH THIS FIXED VERSION -->
-<select id="campaign-provider" class="shadow border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500">
-    <option value="gmail">Gmail</option>
-    <option value="outlook">Outlook/Hotmail</option>
-    <option value="yahoo">Yahoo Mail</option>
-    <option value="amazon_ses">Amazon SES</option>
-    <option value="custom">Custom SMTP</option>
-</select>
