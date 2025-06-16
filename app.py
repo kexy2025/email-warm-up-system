@@ -3,23 +3,14 @@ import os
 import json
 import smtplib
 import ssl
-import imaplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-import requests
-import base64
-from urllib.parse import urlencode
 import secrets
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
 import uuid
 from cryptography.fernet import Fernet
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
-from flask_wtf.csrf import CSRFProtect
-import threading
-from concurrent.futures import ThreadPoolExecutor
 import logging
 
 app = Flask(__name__)
@@ -28,19 +19,6 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', secrets.token_hex(32))
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///email_warmup.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-    'pool_size': 10,
-    'pool_recycle': 120,
-    'pool_pre_ping': True
-}
-
-# Security
-csrf = CSRFProtect(app)
-limiter = Limiter(
-    app,
-    key_func=get_remote_address,
-    default_limits=["200 per day", "50 per hour"]
-)
 
 # Encryption
 ENCRYPTION_KEY = os.environ.get('ENCRYPTION_KEY', Fernet.generate_key().decode())
@@ -64,18 +42,15 @@ class User(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     last_login = db.Column(db.DateTime, nullable=True)
     is_active = db.Column(db.Boolean, default=True)
-    failed_login_attempts = db.Column(db.Integer, default=0)
-    locked_until = db.Column(db.DateTime, nullable=True)
     
     # Relationships
     campaigns = db.relationship('Campaign', backref='user', lazy=True, cascade='all, delete-orphan')
-    oauth_tokens = db.relationship('OAuthToken', backref='user', lazy=True, cascade='all, delete-orphan')
     
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
     
     def set_password(self, password):
-        self.password_hash = generate_password_hash(password, method='pbkdf2:sha256')
+        self.password_hash = generate_password_hash(password)
     
     def generate_reset_token(self):
         self.reset_token = str(uuid.uuid4())
@@ -87,18 +62,6 @@ class User(db.Model):
         if self.reset_token == token and self.reset_token_expires > datetime.utcnow():
             return True
         return False
-    
-    def is_locked(self):
-        return self.locked_until and self.locked_until > datetime.utcnow()
-    
-    def lock_account(self):
-        self.locked_until = datetime.utcnow() + timedelta(minutes=30)
-        db.session.commit()
-    
-    def unlock_account(self):
-        self.failed_login_attempts = 0
-        self.locked_until = None
-        db.session.commit()
     
     def to_dict(self):
         return {
@@ -119,7 +82,6 @@ class Campaign(db.Model):
     smtp_password_encrypted = db.Column(db.Text, nullable=True)
     provider = db.Column(db.String(50), default='custom')
     status = db.Column(db.String(50), default='draft')
-    oauth_enabled = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     started_at = db.Column(db.DateTime, nullable=True)
     paused_at = db.Column(db.DateTime, nullable=True)
@@ -132,7 +94,6 @@ class Campaign(db.Model):
     
     # Relationships
     email_logs = db.relationship('EmailLog', backref='campaign', lazy=True, cascade='all, delete-orphan')
-    campaign_metrics = db.relationship('CampaignMetrics', backref='campaign', lazy=True, cascade='all, delete-orphan')
     
     def encrypt_password(self, password):
         if password:
@@ -152,7 +113,6 @@ class Campaign(db.Model):
             'smtp_port': self.smtp_port,
             'provider': self.provider,
             'status': self.status,
-            'oauth_enabled': self.oauth_enabled,
             'daily_volume': self.daily_volume,
             'max_volume': self.max_volume,
             'created_at': self.created_at.isoformat() if self.created_at else None,
@@ -167,7 +127,6 @@ class EmailLog(db.Model):
     status = db.Column(db.String(50), default='sent')
     smtp_response = db.Column(db.Text, nullable=True)
     sent_at = db.Column(db.DateTime, default=datetime.utcnow)
-    bounce_reason = db.Column(db.String(500), nullable=True)
     
     # Foreign Keys
     campaign_id = db.Column(db.Integer, db.ForeignKey('campaign.id'), nullable=False)
@@ -182,67 +141,27 @@ class EmailLog(db.Model):
             'sent_at': self.sent_at.isoformat() if self.sent_at else None
         }
 
-class CampaignMetrics(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    date = db.Column(db.Date, nullable=False)
-    emails_sent = db.Column(db.Integer, default=0)
-    emails_delivered = db.Column(db.Integer, default=0)
-    emails_bounced = db.Column(db.Integer, default=0)
-    reputation_score = db.Column(db.Float, default=0.0)
-    
-    # Foreign Keys
-    campaign_id = db.Column(db.Integer, db.ForeignKey('campaign.id'), nullable=False)
-    
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'date': self.date.isoformat() if self.date else None,
-            'emails_sent': self.emails_sent,
-            'emails_delivered': self.emails_delivered,
-            'emails_bounced': self.emails_bounced,
-            'reputation_score': self.reputation_score
-        }
-
-class OAuthToken(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    provider = db.Column(db.String(50), nullable=False)
-    access_token = db.Column(db.Text, nullable=False)
-    refresh_token = db.Column(db.Text, nullable=True)
-    expires_at = db.Column(db.DateTime, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    
-    # Foreign Keys
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-
 # SMTP provider configurations
 SMTP_PROVIDERS = {
     'gmail': {
         'smtp_host': 'smtp.gmail.com',
         'smtp_port': 587,
-        'oauth_enabled': True,
         'requires_app_password': True
     },
     'outlook': {
         'smtp_host': 'smtp-mail.outlook.com',
         'smtp_port': 587,
-        'oauth_enabled': True,
         'requires_app_password': False
     },
     'yahoo': {
         'smtp_host': 'smtp.mail.yahoo.com',
         'smtp_port': 587,
-        'oauth_enabled': True,
         'requires_app_password': True
-    },
-    'aws_ses': {
-        'smtp_host': 'email-smtp.{region}.amazonaws.com',
-        'smtp_port': 587,
-        'oauth_enabled': False
     },
     'custom': {
         'smtp_host': '',
         'smtp_port': 587,
-        'oauth_enabled': False
+        'requires_app_password': False
     }
 }
 
@@ -327,13 +246,41 @@ Email Warmup System
             'error_type': 'general_error'
         }
 
+def get_setup_instructions(provider):
+    instructions = {
+        'gmail': {
+            'title': 'Gmail Setup Instructions',
+            'steps': [
+                '1. Enable 2-Factor Authentication on your Google account',
+                '2. Go to Google Account settings > Security > App passwords',
+                '3. Generate an App Password for "Mail"',
+                '4. Use your email and the generated App Password'
+            ]
+        },
+        'outlook': {
+            'title': 'Outlook Setup Instructions',
+            'steps': [
+                '1. Use your regular email and password',
+                '2. If 2FA is enabled, create an App Password'
+            ]
+        },
+        'yahoo': {
+            'title': 'Yahoo Mail Setup Instructions',
+            'steps': [
+                '1. Enable 2-Factor Authentication',
+                '2. Generate app password for Mail',
+                '3. Use email and generated password'
+            ]
+        }
+    }
+    return instructions.get(provider, {'title': 'Custom SMTP', 'steps': ['Configure SMTP settings manually']})
+
 # Routes
 @app.route('/')
 def index():
     return render_template('dashboard.html')
 
 @app.route('/api/login', methods=['POST'])
-@limiter.limit("5 per minute")
 def login():
     data = request.get_json()
     email = data.get('email', '').lower().strip()
@@ -363,7 +310,6 @@ def login():
         return jsonify({'success': False, 'message': 'Invalid email or password'}), 401
 
 @app.route('/api/register', methods=['POST'])
-@limiter.limit("3 per minute")
 def register():
     data = request.get_json()
     username = data.get('username', '').strip()
@@ -403,7 +349,6 @@ def register():
     })
 
 @app.route('/api/forgot-password', methods=['POST'])
-@limiter.limit("3 per hour")
 def forgot_password():
     data = request.get_json()
     email = data.get('email', '').lower().strip()
@@ -417,23 +362,19 @@ def forgot_password():
         # Generate reset token
         reset_token = user.generate_reset_token()
         
-        # In a real app, you'd send this via email
-        # For demo purposes, we'll return it in the response
         return jsonify({
             'success': True,
             'message': 'Password reset instructions sent to your email',
-            'reset_token': reset_token,  # Remove this in production
-            'reset_url': f'/reset-password?token={reset_token}'  # Remove this in production
+            'reset_token': reset_token,
+            'reset_url': f'/reset-password?token={reset_token}'
         })
     else:
-        # Don't reveal if email exists or not for security
         return jsonify({
             'success': True,
             'message': 'If that email exists, password reset instructions have been sent'
         })
 
 @app.route('/api/reset-password', methods=['POST'])
-@limiter.limit("5 per hour")
 def reset_password():
     data = request.get_json()
     token = data.get('token', '')
@@ -479,44 +420,7 @@ def detect_provider():
         'setup_instructions': get_setup_instructions(provider)
     })
 
-def get_setup_instructions(provider):
-    instructions = {
-        'gmail': {
-            'title': 'Gmail Setup Instructions',
-            'steps': [
-                '1. Enable 2-Factor Authentication on your Google account',
-                '2. Go to Google Account settings > Security > App passwords',
-                '3. Generate an App Password for "Mail"',
-                '4. Use your email and the generated App Password'
-            ]
-        },
-        'outlook': {
-            'title': 'Outlook Setup Instructions',
-            'steps': [
-                '1. Use your regular email and password',
-                '2. If 2FA is enabled, create an App Password'
-            ]
-        },
-        'yahoo': {
-            'title': 'Yahoo Mail Setup Instructions',
-            'steps': [
-                '1. Enable 2-Factor Authentication',
-                '2. Generate app password for Mail',
-                '3. Use email and generated password'
-            ]
-        },
-        'aws_ses': {
-            'title': 'AWS SES Setup Instructions',
-            'steps': [
-                '1. Get SMTP credentials from AWS SES console',
-                '2. Use SMTP username and password from AWS'
-            ]
-        }
-    }
-    return instructions.get(provider, {'title': 'Custom SMTP', 'steps': ['Configure SMTP settings manually']})
-
 @app.route('/api/test-smtp', methods=['POST'])
-@limiter.limit("10 per hour")
 def test_smtp():
     data = request.get_json()
     
