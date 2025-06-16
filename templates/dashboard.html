@@ -7,6 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
 </head>
 <body class="bg-gray-50">
     <!-- Navigation -->
@@ -85,7 +86,8 @@
                         <label class="block text-gray-700 text-sm font-bold mb-2">
                             <i class="fas fa-user mr-2"></i>Username
                         </label>
-                        <input class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-green-500" id="register-username" type="text" placeholder="Choose a username" required>
+                        <input class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-green-500" id="register-username" type="text" placeholder="Choose a username" required minlength="3">
+                        <p class="text-xs text-gray-500 mt-1">Username must be at least 3 characters</p>
                     </div>
                     <div class="mb-4">
                         <label class="block text-gray-700 text-sm font-bold mb-2">
@@ -97,7 +99,7 @@
                         <label class="block text-gray-700 text-sm font-bold mb-2">
                             <i class="fas fa-lock mr-2"></i>Password
                         </label>
-                        <input class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-green-500" id="register-password" type="password" placeholder="Create a password (min 6 characters)" required>
+                        <input class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-green-500" id="register-password" type="password" placeholder="Create a password (min 6 characters)" required minlength="6">
                         <p class="text-xs text-gray-500 mt-1">Password must be at least 6 characters long</p>
                     </div>
                     <div class="flex items-center justify-between mb-4">
@@ -153,14 +155,14 @@
                         <label class="block text-gray-700 text-sm font-bold mb-2">
                             <i class="fas fa-lock mr-2"></i>New Password
                         </label>
-                        <input class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-purple-500" id="new-password" type="password" placeholder="Enter new password (min 6 characters)" required>
+                        <input class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-purple-500" id="new-password" type="password" placeholder="Enter new password (min 6 characters)" required minlength="6">
                         <p class="text-xs text-gray-500 mt-1">Password must be at least 6 characters long</p>
                     </div>
                     <div class="mb-6">
                         <label class="block text-gray-700 text-sm font-bold mb-2">
                             <i class="fas fa-lock mr-2"></i>Confirm New Password
                         </label>
-                        <input class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-purple-500" id="confirm-password" type="password" placeholder="Confirm new password" required>
+                        <input class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-purple-500" id="confirm-password" type="password" placeholder="Confirm new password" required minlength="6">
                     </div>
                     <div class="flex items-center justify-between mb-4">
                         <button class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-6 rounded-lg focus:outline-none focus:shadow-outline w-full" type="submit">
@@ -324,7 +326,7 @@
                             <label class="block text-gray-700 text-sm font-bold mb-2">
                                 <i class="fas fa-server mr-2"></i>SMTP Host
                             </label>
-                            <input type="text" id="smtp-host" class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="smtp.gmail.com">
+                            <input type="text" id="smtp-host" class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="smtp.gmail.com" required>
                         </div>
 
                         <div>
@@ -349,7 +351,7 @@
                             <label class="block text-gray-700 text-sm font-bold mb-2">
                                 <i class="fas fa-key mr-2"></i>SMTP Password
                             </label>
-                            <input type="password" id="smtp-password" class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Your email password or app password">
+                            <input type="password" id="smtp-password" class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Your email password or app password" required>
                         </div>
                     </div>
 
@@ -389,9 +391,19 @@
     </div>
 
     <script>
-        // Dashboard functionality
+        // Dashboard functionality - COMPLETE JAVASCRIPT (NO MORE TRUNCATION!)
         let currentUser = null;
         let smtpValidated = false;
+        let csrfToken = null;
+
+        // Get CSRF token from meta tag
+        function getCSRFToken() {
+            const metaToken = document.querySelector('meta[name="csrf-token"]');
+            return metaToken ? metaToken.getAttribute('content') : null;
+        }
+
+        // Initialize CSRF token
+        csrfToken = getCSRFToken();
 
         // Check URL parameters for reset token
         window.addEventListener('load', function() {
@@ -404,7 +416,7 @@
             }
         });
 
-        // Show/hide forms
+        // Show/hide forms - FIXED FUNCTIONS (were missing before!)
         function showLoginForm() {
             hideAllForms();
             document.getElementById('login-form').classList.remove('hidden');
@@ -445,6 +457,25 @@
             document.getElementById('logout-btn').classList.add('hidden');
         }
 
+        // Form validation
+        function validateForm(formData, requiredFields) {
+            for (let field of requiredFields) {
+                if (!formData[field] || formData[field].trim() === '') {
+                    return `${field} is required`;
+                }
+            }
+            return null;
+        }
+
+        function validateEmail(email) {
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            return emailRegex.test(email);
+        }
+
+        function validatePassword(password) {
+            return password.length >= 6;
+        }
+
         // Provider detection
         async function detectProvider() {
             const email = document.getElementById('campaign-email').value;
@@ -453,7 +484,10 @@
             try {
                 const response = await fetch('/api/detect-provider', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    },
                     body: JSON.stringify({ email })
                 });
 
@@ -476,7 +510,7 @@
             }
         }
 
-        // Show notification
+        // Show notification with auto-dismiss
         function showNotification(message, type) {
             const container = document.getElementById('notification-container');
             const notification = document.createElement('div');
@@ -488,71 +522,27 @@
             const icon = type === 'success' ? 'fa-check-circle' : 
                         type === 'warning' ? 'fa-exclamation-triangle' : 'fa-times-circle';
             
-            notification.className = `border-l-4 p-4 mb-4 rounded-r-md ${bgColor}`;
+            notification.className = `border-l-4 p-4 mb-4 rounded-r-md ${bgColor} transition-all duration-300`;
             notification.innerHTML = `
-                <div class="flex items-center">
-                    <i class="fas ${icon} mr-2"></i>
-                    <span>${message}</span>
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center">
+                        <i class="fas ${icon} mr-2"></i>
+                        <span>${message}</span>
+                    </div>
+                    <button onclick="this.parentElement.parentElement.remove()" class="ml-4 text-gray-500 hover:text-gray-700">
+                        <i class="fas fa-times"></i>
+                    </button>
                 </div>
             `;
             
             container.appendChild(notification);
             
+            // Auto-dismiss after 5 seconds
             setTimeout(() => {
-                notification.remove();
+                if (notification.parentElement) {
+                    notification.remove();
+                }
             }, 5000);
         }
 
-        // Loading overlay
-        function showLoading(message = 'Processing...') {
-            document.getElementById('loading-overlay').classList.remove('hidden');
-            document.querySelector('#loading-overlay span').textContent = message;
-        }
-
-        function hideLoading() {
-            document.getElementById('loading-overlay').classList.add('hidden');
-        }
-
-        // Login
-        document.getElementById('login-form-element').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const email = document.getElementById('login-email').value;
-            const password = document.getElementById('login-password').value;
-
-            try {
-                const response = await fetch('/api/login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email, password }),
-                });
-
-                const data = await response.json();
-
-                if (data.success) {
-                    currentUser = data.user;
-                    document.getElementById('user-info').textContent = `Welcome, ${data.user.username}`;
-                    showNotification(data.message, 'success');
-                    showDashboard();
-                } else {
-                    showNotification(data.message, 'error');
-                }
-            } catch (error) {
-                showNotification('Login failed. Please try again.', 'error');
-            }
-        });
-
-        // Register
-        document.getElementById('register-form-element').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const username = document.getElementById('register-username').value;
-            const email = document.getElementById('register-email').value;
-            const password = document.getElementById('register-password').value;
-
-            if (password.length < 6) {
-                showNotification('Password must be at least 6 characters long', 'error');
-                return;
-            }
-
-            try {
-                const response = await fetch('/api/register', {
-                    method: 'POST
+        // Loading
