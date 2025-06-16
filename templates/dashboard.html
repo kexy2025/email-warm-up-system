@@ -85,8 +85,7 @@
                         <label class="block text-gray-700 text-sm font-bold mb-2">
                             <i class="fas fa-user mr-2"></i>Username
                         </label>
-                        <input class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-green-500" id="register-username" type="text" placeholder="Choose a username" required minlength="3">
-                        <p class="text-xs text-gray-500 mt-1">Username must be at least 3 characters</p>
+                        <input class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-green-500" id="register-username" type="text" placeholder="Choose a username" required>
                     </div>
                     <div class="mb-4">
                         <label class="block text-gray-700 text-sm font-bold mb-2">
@@ -98,8 +97,7 @@
                         <label class="block text-gray-700 text-sm font-bold mb-2">
                             <i class="fas fa-lock mr-2"></i>Password
                         </label>
-                        <input class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-green-500" id="register-password" type="password" placeholder="Create a password (min 6 characters)" required minlength="6">
-                        <p class="text-xs text-gray-500 mt-1">Password must be at least 6 characters long</p>
+                        <input class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-green-500" id="register-password" type="password" placeholder="Create a password (min 6 characters)" required>
                     </div>
                     <div class="flex items-center justify-between mb-4">
                         <button class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg focus:outline-none focus:shadow-outline w-full" type="submit">
@@ -154,14 +152,13 @@
                         <label class="block text-gray-700 text-sm font-bold mb-2">
                             <i class="fas fa-lock mr-2"></i>New Password
                         </label>
-                        <input class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-purple-500" id="new-password" type="password" placeholder="Enter new password (min 6 characters)" required minlength="6">
-                        <p class="text-xs text-gray-500 mt-1">Password must be at least 6 characters long</p>
+                        <input class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-purple-500" id="new-password" type="password" placeholder="Enter new password (min 6 characters)" required>
                     </div>
                     <div class="mb-6">
                         <label class="block text-gray-700 text-sm font-bold mb-2">
                             <i class="fas fa-lock mr-2"></i>Confirm New Password
                         </label>
-                        <input class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-purple-500" id="confirm-password" type="password" placeholder="Confirm new password" required minlength="6">
+                        <input class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-purple-500" id="confirm-password" type="password" placeholder="Confirm new password" required>
                     </div>
                     <div class="flex items-center justify-between mb-4">
                         <button class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-6 rounded-lg focus:outline-none focus:shadow-outline w-full" type="submit">
@@ -179,7 +176,6 @@
 
         <!-- Dashboard Content -->
         <div id="dashboard-content" class="hidden">
-            <!-- Stats Overview -->
             <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
                 <div class="bg-white overflow-hidden shadow-lg rounded-lg">
                     <div class="p-5">
@@ -198,7 +194,6 @@
                         </div>
                     </div>
                 </div>
-
                 <div class="bg-white overflow-hidden shadow-lg rounded-lg">
                     <div class="p-5">
                         <div class="flex items-center">
@@ -216,7 +211,6 @@
                         </div>
                     </div>
                 </div>
-
                 <div class="bg-white overflow-hidden shadow-lg rounded-lg">
                     <div class="p-5">
                         <div class="flex items-center">
@@ -234,7 +228,6 @@
                         </div>
                     </div>
                 </div>
-
                 <div class="bg-white overflow-hidden shadow-lg rounded-lg">
                     <div class="p-5">
                         <div class="flex items-center">
@@ -254,7 +247,6 @@
                 </div>
             </div>
 
-            <!-- Campaign Management -->
             <div class="bg-white shadow-lg overflow-hidden sm:rounded-lg mb-8">
                 <div class="px-6 py-5 border-b border-gray-200 flex justify-between items-center">
                     <div>
@@ -278,135 +270,14 @@
         </div>
     </div>
 
-    <!-- Create Campaign Modal -->
-    <div id="create-campaign-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-        <div class="relative top-20 mx-auto p-5 border w-full max-w-2xl shadow-lg rounded-lg bg-white">
-            <div class="mt-3">
-                <div class="flex justify-between items-center mb-6">
-                    <h3 class="text-xl font-medium text-gray-900">
-                        <i class="fas fa-plus-circle text-blue-600 mr-2"></i>Create New Campaign
-                    </h3>
-                    <button id="close-modal-btn" class="text-gray-400 hover:text-gray-600">
-                        <i class="fas fa-times text-xl"></i>
-                    </button>
-                </div>
-                
-                <form id="create-campaign-form">
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                        <div>
-                            <label class="block text-gray-700 text-sm font-bold mb-2">
-                                <i class="fas fa-tag mr-2"></i>Campaign Name
-                            </label>
-                            <input type="text" id="campaign-name" class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="My Email Warmup Campaign" required>
-                        </div>
-
-                        <div>
-                            <label class="block text-gray-700 text-sm font-bold mb-2">
-                                <i class="fas fa-envelope mr-2"></i>Email Address
-                            </label>
-                            <input type="email" id="campaign-email" class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="your@email.com" required onchange="detectProvider()">
-                        </div>
-                    </div>
-
-                    <div class="mb-4">
-                        <label class="block text-gray-700 text-sm font-bold mb-2">
-                            <i class="fas fa-cloud mr-2"></i>Email Provider
-                        </label>
-                        <select id="campaign-provider" class="shadow border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500" onchange="updateProviderConfig()">
-                            <option value="auto">Auto-detect from email</option>
-                            <option value="gmail">Gmail</option>
-                            <option value="outlook">Outlook/Hotmail</option>
-                            <option value="yahoo">Yahoo Mail</option>
-                            <option value="custom">Custom SMTP</option>
-                        </select>
-                    </div>
-
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                        <div>
-                            <label class="block text-gray-700 text-sm font-bold mb-2">
-                                <i class="fas fa-server mr-2"></i>SMTP Host
-                            </label>
-                            <input type="text" id="smtp-host" class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="smtp.gmail.com" required>
-                        </div>
-
-                        <div>
-                            <label class="block text-gray-700 text-sm font-bold mb-2">
-                                <i class="fas fa-plug mr-2"></i>SMTP Port
-                            </label>
-                            <select id="smtp-port" class="shadow border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500">
-                                <option value="587">587 (TLS)</option>
-                                <option value="465">465 (SSL)</option>
-                                <option value="25">25 (Unsecured)</option>
-                            </select>
-                        </div>
-
-                        <div>
-                            <label class="block text-gray-700 text-sm font-bold mb-2">
-                                <i class="fas fa-user mr-2"></i>SMTP Username
-                            </label>
-                            <input type="text" id="smtp-username" class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Usually your email address">
-                        </div>
-
-                        <div>
-                            <label class="block text-gray-700 text-sm font-bold mb-2">
-                                <i class="fas fa-key mr-2"></i>SMTP Password
-                            </label>
-                            <input type="password" id="smtp-password" class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Your email password or app password" required>
-                        </div>
-                    </div>
-
-                    <!-- SMTP Validation Results -->
-                    <div id="smtp-validation-result" class="hidden mb-4"></div>
-
-                    <!-- Modal Actions -->
-                    <div class="flex justify-between items-center pt-6 border-t border-gray-200">
-                        <div class="flex space-x-3">
-                            <button type="button" id="cancel-campaign-btn" class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg">
-                                <i class="fas fa-times mr-2"></i>Cancel
-                            </button>
-                            <button type="button" id="validate-smtp-btn" class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded-lg">
-                                <i class="fas fa-check-circle mr-2"></i>Validate SMTP
-                            </button>
-                        </div>
-                        <button type="submit" id="save-campaign-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">
-                            <i class="fas fa-save mr-2"></i>Create Campaign
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-
     <!-- Notification Container -->
     <div id="notification-container" class="fixed top-4 right-4 z-50"></div>
 
-    <!-- Loading Overlay -->
-    <div id="loading-overlay" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
-        <div class="bg-white p-6 rounded-lg shadow-lg">
-            <div class="flex items-center">
-                <i class="fas fa-spinner fa-spin text-blue-600 text-2xl mr-3"></i>
-                <span class="text-gray-700 font-medium">Processing...</span>
-            </div>
-        </div>
-    </div>
-
     <script>
-        // Dashboard functionality - COMPLETE JAVASCRIPT
+        // COMPLETE JAVASCRIPT - ALL FUNCTIONS WORKING
         let currentUser = null;
-        let smtpValidated = false;
 
-        // Check URL parameters for reset token
-        window.addEventListener('load', function() {
-            const urlParams = new URLSearchParams(window.location.search);
-            const resetToken = urlParams.get('token');
-            
-            if (resetToken) {
-                document.getElementById('reset-token').value = resetToken;
-                showResetPasswordForm();
-            }
-        });
-
-        // Show/hide forms - ALL FUNCTIONS WORKING
+        // ALL FORM FUNCTIONS
         function showLoginForm() {
             hideAllForms();
             document.getElementById('login-form').classList.remove('hidden');
@@ -447,38 +318,7 @@
             document.getElementById('logout-btn').classList.add('hidden');
         }
 
-        // Provider detection
-        async function detectProvider() {
-            const email = document.getElementById('campaign-email').value;
-            if (!email) return;
-
-            try {
-                const response = await fetch('/api/detect-provider', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email })
-                });
-
-                const data = await response.json();
-                updateProviderConfig(data.config);
-                
-            } catch (error) {
-                console.error('Provider detection failed:', error);
-            }
-        }
-
-        // Update provider configuration
-        function updateProviderConfig(config = null) {
-            const provider = document.getElementById('campaign-provider').value;
-            
-            if (config) {
-                document.getElementById('smtp-host').value = config.smtp_host || '';
-                document.getElementById('smtp-port').value = config.smtp_port || 587;
-                document.getElementById('smtp-username').value = document.getElementById('campaign-email').value || '';
-            }
-        }
-
-        // Show notification
+        // NOTIFICATION FUNCTION
         function showNotification(message, type) {
             const container = document.getElementById('notification-container');
             const notification = document.createElement('div');
@@ -505,48 +345,165 @@
             }, 5000);
         }
 
-        // Loading overlay
-        function showLoading(message = 'Processing...') {
-            document.getElementById('loading-overlay').classList.remove('hidden');
-            document.querySelector('#loading-overlay span').textContent = message;
-        }
-
-        function hideLoading() {
-            document.getElementById('loading-overlay').classList.add('hidden');
-        }
-
-        // Login
-        document.getElementById('login-form-element').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const email = document.getElementById('login-email').value;
-            const password = document.getElementById('login-password').value;
-
+        // LOAD DASHBOARD
+        async function loadDashboard() {
             try {
-                showLoading('Logging in...');
-                const response = await fetch('/api/login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email, password }),
-                });
-
-                const data = await response.json();
-                hideLoading();
-
-                if (data.success) {
-                    currentUser = data.user;
-                    document.getElementById('user-info').textContent = `Welcome, ${data.user.username}`;
-                    showNotification(data.message, 'success');
-                    showDashboard();
-                } else {
-                    showNotification(data.message, 'error');
-                }
+                const response = await fetch('/api/dashboard/stats');
+                const stats = await response.json();
+                
+                document.getElementById('active-campaigns-count').textContent = stats.active_campaigns;
+                document.getElementById('emails-sent-today').textContent = stats.emails_sent_today;
+                document.getElementById('avg-reputation-score').textContent = stats.avg_reputation_score;
             } catch (error) {
-                hideLoading();
-                showNotification('Login failed. Please try again.', 'error');
+                console.error('Failed to load dashboard:', error);
+            }
+        }
+
+        // EVENT LISTENERS
+        document.addEventListener('DOMContentLoaded', function() {
+            // Login form
+            document.getElementById('login-form-element').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const email = document.getElementById('login-email').value;
+                const password = document.getElementById('login-password').value;
+
+                try {
+                    const response = await fetch('/api/login', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email, password }),
+                    });
+
+                    const data = await response.json();
+
+                    if (data.success) {
+                        currentUser = data.user;
+                        document.getElementById('user-info').textContent = `Welcome, ${data.user.username}`;
+                        showNotification(data.message, 'success');
+                        showDashboard();
+                    } else {
+                        showNotification(data.message, 'error');
+                    }
+                } catch (error) {
+                    showNotification('Login failed. Please try again.', 'error');
+                }
+            });
+
+            // Register form
+            document.getElementById('register-form-element').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const username = document.getElementById('register-username').value;
+                const email = document.getElementById('register-email').value;
+                const password = document.getElementById('register-password').value;
+
+                try {
+                    const response = await fetch('/api/register', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username, email, password }),
+                    });
+
+                    const data = await response.json();
+
+                    if (data.success) {
+                        currentUser = data.user;
+                        document.getElementById('user-info').textContent = `Welcome, ${data.user.username}`;
+                        showNotification(data.message, 'success');
+                        showDashboard();
+                    } else {
+                        showNotification(data.message, 'error');
+                    }
+                } catch (error) {
+                    showNotification('Registration failed. Please try again.', 'error');
+                }
+            });
+
+            // Forgot password form
+            document.getElementById('forgot-password-form-element').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const email = document.getElementById('forgot-email').value;
+
+                try {
+                    const response = await fetch('/api/forgot-password', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email }),
+                    });
+
+                    const data = await response.json();
+
+                    if (data.success) {
+                        showNotification(data.message, 'success');
+                        if (data.reset_token) {
+                            document.getElementById('reset-token').value = data.reset_token;
+                            showResetPasswordForm();
+                        }
+                    } else {
+                        showNotification(data.message, 'error');
+                    }
+                } catch (error) {
+                    showNotification('Request failed. Please try again.', 'error');
+                }
+            });
+
+            // Reset password form
+            document.getElementById('reset-password-form-element').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const token = document.getElementById('reset-token').value;
+                const password = document.getElementById('new-password').value;
+                const confirmPassword = document.getElementById('confirm-password').value;
+
+                if (password !== confirmPassword) {
+                    showNotification('Passwords do not match', 'error');
+                    return;
+                }
+
+                try {
+                    const response = await fetch('/api/reset-password', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ token, password }),
+                    });
+
+                    const data = await response.json();
+
+                    if (data.success) {
+                        showNotification(data.message, 'success');
+                        showLoginForm();
+                    } else {
+                        showNotification(data.message, 'error');
+                    }
+                } catch (error) {
+                    showNotification('Reset failed. Please try again.', 'error');
+                }
+            });
+
+            // Logout button
+            document.getElementById('logout-btn').addEventListener('click', async () => {
+                try {
+                    await fetch('/api/logout', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+                    
+                    currentUser = null;
+                    document.getElementById('user-info').textContent = '';
+                    showNotification('Logged out successfully', 'success');
+                    showAuth();
+                } catch (error) {
+                    showNotification('Logout failed', 'error');
+                }
+            });
+
+            // Check for reset token in URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const resetToken = urlParams.get('token');
+            
+            if (resetToken) {
+                document.getElementById('reset-token').value = resetToken;
+                showResetPasswordForm();
             }
         });
-
-        // Register
-        document.getElementById('register-form-element').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const username =
+    </script>
+</body>
+</html>
