@@ -43,7 +43,7 @@ class User(db.Model):
     last_login = db.Column(db.DateTime, nullable=True)
     is_active = db.Column(db.Boolean, default=True)
     
-    # NEW: Relationship with login tokens for PERSISTENT LOGIN
+    # ADD: Relationship with login tokens for PERSISTENT LOGIN
     login_tokens = db.relationship('LoginToken', backref='user', lazy=True, cascade="all, delete-orphan")
     
     def check_password(self, password):
@@ -61,7 +61,7 @@ class User(db.Model):
     def verify_reset_token(self, token):
         return self.reset_token == token and self.reset_token_expires > datetime.utcnow()
     
-    # NEW: Persistent login methods
+    # ADD: Persistent login methods
     def create_login_token(self, remember_me=False):
         """Create a new persistent login token"""
         self.cleanup_expired_tokens()
@@ -108,7 +108,7 @@ class User(db.Model):
             'last_login': self.last_login.isoformat() if self.last_login else None
         }
 
-# NEW: LoginToken model for PERSISTENT LOGIN
+# ADD: LoginToken model for PERSISTENT LOGIN
 class LoginToken(db.Model):
     """Persistent login tokens for remember me functionality"""
     id = db.Column(db.Integer, primary_key=True)
@@ -163,7 +163,7 @@ class Campaign(db.Model):
             'started_at': self.started_at.isoformat() if self.started_at else None
         }
 
-# FIXED SMTP Providers - COMPLETE LIST WITH AWS SES
+# FIXED: SMTP Providers - ADD Amazon SES
 SMTP_PROVIDERS = {
     'gmail': {
         'smtp_host': 'smtp.gmail.com',
@@ -203,7 +203,7 @@ SMTP_PROVIDERS = {
     }
 }
 
-# NEW: Authentication Helper Functions for PERSISTENT LOGIN
+# ADD: Authentication Helper Functions for PERSISTENT LOGIN
 def get_current_user():
     """Get the current authenticated user from session or token"""
     # First try session-based authentication
@@ -212,7 +212,7 @@ def get_current_user():
         if user and user.is_active:
             return user
     
-    # Try token-based authentication for PERSISTENT LOGIN
+    # Try token-based authentication
     token = request.cookies.get('remember_token')
     if token:
         login_token = LoginToken.find_valid_token(token)
@@ -241,7 +241,7 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-def login_user_persistent(user, remember_me=False):
+def login_user_with_token(user, remember_me=False):
     """Login a user with session and optional persistent token"""
     # Update user's last login
     user.last_login = datetime.utcnow()
@@ -275,7 +275,7 @@ def login_user_persistent(user, remember_me=False):
     
     return response
 
-def logout_user_persistent():
+def logout_user_with_token():
     """Logout current user and clear all tokens"""
     user = get_current_user()
     if user:
@@ -308,14 +308,15 @@ def detect_email_provider(email):
     except:
         return 'custom'
 
-# NEW: AWS SES validation helper
+# ADD: AWS SES validation helper
 def is_aws_ses_smtp_username(username):
     """Check if username looks like AWS SES SMTP credentials"""
     # AWS SES SMTP usernames are 20 character alphanumeric strings
     return bool(re.match(r'^[A-Z0-9]{20}$', username))
 
+# FIXED: Enhanced SMTP validation with AWS SES support
 def validate_smtp_comprehensive(email, password, smtp_host, smtp_port, smtp_username=None, provider='custom'):
-    """Enhanced SMTP validation with better error handling and AWS SES support"""
+    """Enhanced SMTP validation with better error handling"""
     if not smtp_username:
         smtp_username = email
     
@@ -396,7 +397,7 @@ Your email configuration has been tested and verified:
 👤 Username: {smtp_username}
 ⚙️ Provider: {provider.upper()}
 
-Your account is now ready for email warmup campaigns.
+🎉 Your account is now ready for email warmup campaigns.
 
 ---
 KEXY Email Warmup System
@@ -536,26 +537,13 @@ def get_setup_instructions(provider):
 def index():
     return render_template('dashboard.html')
 
-# NEW: Check authentication route for PERSISTENT LOGIN
-@app.route('/api/check-auth')
-def check_auth():
-    """Check if user is authenticated"""
-    user = get_current_user()
-    if user:
-        return jsonify({
-            'authenticated': True,
-            'user': user.to_dict()
-        })
-    else:
-        return jsonify({'authenticated': False})
-
 @app.route('/api/login', methods=['POST'])
 def login():
     try:
         data = request.get_json()
         email = data.get('email', '').lower().strip()
         password = data.get('password', '')
-        remember_me = data.get('remember_me', False)  # NEW: Remember me support
+        remember_me = data.get('remember_me', False)  # ADD: Remember me support
         
         if not email or not password:
             return jsonify({'success': False, 'message': 'Email and password are required'})
@@ -563,7 +551,7 @@ def login():
         user = User.query.filter_by(email=email).first()
         
         if user and user.check_password(password):
-            return login_user_persistent(user, remember_me)  # NEW: Use persistent login
+            return login_user_with_token(user, remember_me)  # CHANGED: Use persistent login
         else:
             return jsonify({'success': False, 'message': 'Invalid email or password'})
             
@@ -597,7 +585,8 @@ def register():
         db.session.add(user)
         db.session.commit()
         
-        return login_user_persistent(user, remember_me=True)  # NEW: Auto remember new users
+        return login_user_with_token(user, remember_me=True)  # CHANGED: Auto remember new users
+        
     except Exception as e:
         logger.error(f"Registration error: {str(e)}")
         db.session.rollback()
@@ -662,7 +651,7 @@ def reset_password():
 
 @app.route('/api/logout', methods=['POST'])
 def logout():
-    return logout_user_persistent()  # NEW: Use persistent logout
+    return logout_user_with_token()  # CHANGED: Use persistent logout
 
 @app.route('/api/detect-provider', methods=['POST'])
 def detect_provider():
@@ -682,7 +671,6 @@ def detect_provider():
         return jsonify({'error': 'Provider detection failed'})
 
 @app.route('/api/test-smtp', methods=['POST'])
-@login_required  # NEW: Requires authentication
 def test_smtp():
     try:
         data = request.get_json()
@@ -711,11 +699,13 @@ def test_smtp():
         })
 
 @app.route('/api/dashboard/stats')
-@login_required  # NEW: Requires authentication
 def dashboard_stats():
+    if 'user_id' not in session:
+        return jsonify({'error': 'Not authenticated'}), 401
+    
     try:
-        user = get_current_user()
-        campaigns = Campaign.query.filter_by(user_id=user.id).all()
+        user_id = session['user_id']
+        campaigns = Campaign.query.filter_by(user_id=user_id).all()
         
         stats = {
             'active_campaigns': len([c for c in campaigns if c.status == 'active']),
@@ -729,9 +719,11 @@ def dashboard_stats():
         return jsonify({'error': 'Failed to load stats'})
 
 @app.route('/api/campaigns', methods=['GET', 'POST'])
-@login_required  # NEW: Requires authentication
 def campaigns_api():
-    user = get_current_user()
+    if 'user_id' not in session:
+        return jsonify({'error': 'Not authenticated'}), 401
+    
+    user_id = session['user_id']
     
     try:
         if request.method == 'POST':
@@ -750,7 +742,7 @@ def campaigns_api():
                 smtp_username=data.get('smtp_username', data.get('email')),
                 smtp_password=data.get('smtp_password'),
                 provider=data.get('provider', 'custom'),
-                user_id=user.id
+                user_id=user_id
             )
             
             db.session.add(campaign)
@@ -763,7 +755,7 @@ def campaigns_api():
             })
         
         else:
-            campaigns = Campaign.query.filter_by(user_id=user.id).all()
+            campaigns = Campaign.query.filter_by(user_id=user_id).all()
             return jsonify([c.to_dict() for c in campaigns])
             
     except Exception as e:
@@ -781,4 +773,12 @@ def cleanup_expired_tokens():
         if expired_count > 0:
             logger.info(f"Cleaned up {expired_count} expired login tokens")
     except Exception as e:
-        logger.
+        logger.error(f"Token cleanup error: {e}")
+        db.session.rollback()
+
+# Initialize database and create demo user
+with app.app_context():
+    db.create_all()
+    
+    # Cleanup expired tokens on startup
+    cleanup_expired_tokens()
