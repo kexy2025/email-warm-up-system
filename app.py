@@ -755,18 +755,58 @@ def cleanup_expired_tokens():
         logger.error(f"Token cleanup error: {e}")
         db.session.rollback()
 
-# CRITICAL FIX: PRESERVE EXISTING DATA ON UPDATES
 def migrate_database():
     """Add missing columns to existing tables without losing data"""
     try:
-        # Try to add auto_login column if it doesn't exist
-        try:
+        # Check if auto_login column exists, if not add it
+        inspector = db.inspect(db.engine)
+        user_columns = [column['name'] for column in inspector.get_columns('user')]
+        
+        if 'auto_login' not in user_columns:
             db.session.execute('ALTER TABLE user ADD COLUMN auto_login BOOLEAN DEFAULT TRUE')
             db.session.commit()
             logger.info("Added auto_login column to existing users")
-        except:
-            pass  # Column already exists
         
-        # Try to add other missing columns for campaigns
-        try:
-            db.session.execute('
+        # Update existing users to have auto_login = True
+        db.session.execute('UPDATE user SET auto_login = TRUE WHERE auto_login IS NULL')
+        db.session.commit()
+        
+        logger.info("Database migration completed successfully")
+        
+    except Exception as e:
+        logger.error(f"Database migration error: {e}")
+        db.session.rollback()
+
+# CRITICAL: Initialize database with data preservation
+with app.app_context():
+    try:
+        # Create tables if they don't exist
+        db.create_all()
+        logger.info("Database tables created/verified")
+        
+        # Run migration to add missing columns
+        migrate_database()
+        
+        # Cleanup expired tokens
+        cleanup_expired_tokens()
+        
+        # Create demo user only if it doesn't exist
+        if not User.query.filter_by(email='demo@example.com').first():
+            demo_user = User(username='demo', email='demo@example.com')
+            demo_user.set_password('demo123')
+            demo_user.auto_login = True
+            db.session.add(demo_user)
+            db.session.commit()
+            logger.info("Demo user created: demo@example.com / demo123")
+        
+        # Log existing users for debugging
+        existing_users = User.query.all()
+        logger.info(f"Existing users in database: {[u.email for u in existing_users]}")
+        
+    except Exception as e:
+        logger.error(f"Database initialization error: {e}")
+        db.session.rollback()
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host='0.0.0.0', port=port, debug=False)
