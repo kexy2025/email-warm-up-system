@@ -332,13 +332,13 @@ def create_default_user():
     """Create default admin user if no users exist"""
     if User.query.count() == 0:
         admin = User(
-            username='admin',
-            email='admin@example.com'
+            username='scott',
+            email='scott@getkexy.com'
         )
-        admin.set_password('admin123')
+        admin.set_password('password123')
         db.session.add(admin)
         db.session.commit()
-        logger.info("Default admin user created")
+        logger.info("Default user 'scott' created")
 
 # Routes
 @app.route('/')
@@ -350,61 +350,58 @@ def index():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        data = request.get_json() if request.is_json else request.form
-        username = data.get('username')
-        password = data.get('password')
-        remember = data.get('remember', False)
+        try:
+            data = request.get_json() if request.is_json else request.form
+            username = data.get('username')
+            password = data.get('password')
+            remember = data.get('remember', False)
 
-        user = User.query.filter_by(username=username).first()
-        
-        if user and user.check_password(password):
-            login_user(user, remember=remember)
-            user.last_login = datetime.utcnow()
-            db.session.commit()
+            user = User.query.filter_by(username=username).first()
             
+            if user and user.check_password(password):
+                login_user(user, remember=remember)
+                user.last_login = datetime.utcnow()
+                db.session.commit()
+                
+                if request.is_json:
+                    return jsonify({'success': True, 'message': 'Login successful'})
+                return redirect(url_for('index'))
+            else:
+                if request.is_json:
+                    return jsonify({'success': False, 'message': 'Invalid credentials'}), 401
+                flash('Invalid credentials')
+        except Exception as e:
+            logger.error(f"Login error: {e}")
             if request.is_json:
-                return jsonify({'success': True, 'message': 'Login successful'})
-            return redirect(url_for('index'))
-        else:
-            if request.is_json:
-                return jsonify({'success': False, 'message': 'Invalid credentials'}), 401
-            flash('Invalid credentials')
+                return jsonify({'success': False, 'message': 'Login failed'}), 500
     
-    return render_template('login.html')
-
-@app.route('/register', methods=['GET', 'POST'])
-def register():
-    if request.method == 'POST':
-        data = request.get_json() if request.is_json else request.form
-        username = data.get('username')
-        email = data.get('email')
-        password = data.get('password')
-
-        # Check if user exists
-        if User.query.filter_by(username=username).first():
-            if request.is_json:
-                return jsonify({'success': False, 'message': 'Username already exists'}), 400
-            flash('Username already exists')
-            return render_template('register.html')
-
-        if User.query.filter_by(email=email).first():
-            if request.is_json:
-                return jsonify({'success': False, 'message': 'Email already registered'}), 400
-            flash('Email already registered')
-            return render_template('register.html')
-
-        # Create new user
-        user = User(username=username, email=email)
-        user.set_password(password)
-        db.session.add(user)
-        db.session.commit()
-
-        if request.is_json:
-            return jsonify({'success': True, 'message': 'Registration successful'})
-        flash('Registration successful')
-        return redirect(url_for('login'))
-    
-    return render_template('register.html')
+    # Return a simple login form since we don't have login.html
+    return '''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>KEXY Login</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+    </head>
+    <body class="bg-gray-50 min-h-screen flex items-center justify-center">
+        <div class="max-w-md w-full bg-white rounded-lg shadow-md p-6">
+            <h2 class="text-2xl font-bold text-center mb-6">KEXY Login</h2>
+            <form method="POST">
+                <div class="mb-4">
+                    <label class="block text-gray-700 text-sm font-bold mb-2">Username</label>
+                    <input type="text" name="username" required class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500">
+                </div>
+                <div class="mb-6">
+                    <label class="block text-gray-700 text-sm font-bold mb-2">Password</label>
+                    <input type="password" name="password" required class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500">
+                </div>
+                <button type="submit" class="w-full bg-blue-500 text-white py-2 px-4 rounded-lg hover:bg-blue-600">Login</button>
+            </form>
+            <p class="text-center mt-4 text-sm text-gray-600">Default: scott / password123</p>
+        </div>
+    </body>
+    </html>
+    '''
 
 @app.route('/logout')
 @login_required
@@ -462,7 +459,7 @@ def campaigns():
 
             # Get provider configuration
             provider = data['provider']
-            if provider not in SMTP_PROVIDERS and provider not in ['custom_smtp', 'custom_ses']:
+            if provider not in SMTP_PROVIDERS:
                 return jsonify({'success': False, 'message': 'Invalid provider'}), 400
 
             # Validate SMTP connection first
@@ -508,47 +505,6 @@ def campaigns():
             db.session.rollback()
             return jsonify({'success': False, 'message': 'Failed to create campaign'}), 500
 
-@app.route('/api/campaigns/<int:campaign_id>', methods=['GET', 'PUT', 'DELETE'])
-@login_required
-def campaign_detail(campaign_id):
-    campaign = Campaign.query.filter_by(id=campaign_id, user_id=current_user.id).first()
-    if not campaign:
-        return jsonify({'error': 'Campaign not found'}), 404
-
-    if request.method == 'GET':
-        return jsonify(campaign.to_dict())
-
-    elif request.method == 'PUT':
-        try:
-            data = request.get_json()
-            
-            # Update allowed fields
-            updateable_fields = ['name', 'daily_volume', 'warmup_days', 'industry']
-            for field in updateable_fields:
-                if field in data:
-                    setattr(campaign, field, data[field])
-
-            campaign.updated_at = datetime.utcnow()
-            db.session.commit()
-
-            return jsonify({'success': True, 'message': 'Campaign updated', 'campaign': campaign.to_dict()})
-
-        except Exception as e:
-            logger.error(f"Campaign update error: {str(e)}")
-            db.session.rollback()
-            return jsonify({'success': False, 'message': 'Failed to update campaign'}), 500
-
-    elif request.method == 'DELETE':
-        try:
-            db.session.delete(campaign)
-            db.session.commit()
-            return jsonify({'success': True, 'message': 'Campaign deleted'})
-
-        except Exception as e:
-            logger.error(f"Campaign deletion error: {str(e)}")
-            db.session.rollback()
-            return jsonify({'success': False, 'message': 'Failed to delete campaign'}), 500
-
 @app.route('/api/campaigns/<int:campaign_id>/start', methods=['POST'])
 @login_required
 def start_campaign(campaign_id):
@@ -569,24 +525,22 @@ def start_campaign(campaign_id):
         db.session.rollback()
         return jsonify({'success': False, 'message': 'Failed to start campaign'}), 500
 
-@app.route('/api/campaigns/<int:campaign_id>/pause', methods=['POST'])
+@app.route('/api/campaigns/<int:campaign_id>', methods=['DELETE'])
 @login_required
-def pause_campaign(campaign_id):
+def delete_campaign(campaign_id):
     campaign = Campaign.query.filter_by(id=campaign_id, user_id=current_user.id).first()
     if not campaign:
         return jsonify({'error': 'Campaign not found'}), 404
 
     try:
-        campaign.status = 'paused'
-        campaign.updated_at = datetime.utcnow()
+        db.session.delete(campaign)
         db.session.commit()
-        
-        return jsonify({'success': True, 'message': 'Campaign paused'})
+        return jsonify({'success': True, 'message': 'Campaign deleted'})
 
     except Exception as e:
-        logger.error(f"Campaign pause error: {str(e)}")
+        logger.error(f"Campaign deletion error: {str(e)}")
         db.session.rollback()
-        return jsonify({'success': False, 'message': 'Failed to pause campaign'}), 500
+        return jsonify({'success': False, 'message': 'Failed to delete campaign'}), 500
 
 @app.route('/api/dashboard-stats')
 @login_required
@@ -610,20 +564,6 @@ def dashboard_stats():
         logger.error(f"Dashboard stats error: {str(e)}")
         return jsonify({'error': 'Failed to load stats'}), 500
 
-@app.route('/api/providers')
-def get_providers():
-    """Get available SMTP providers"""
-    return jsonify({
-        'providers': {
-            key: {
-                'name': key.replace('_', ' ').title(),
-                'help_text': config.get('help_text', ''),
-                'requires_custom_host': key in ['custom_smtp', 'custom_ses']
-            }
-            for key, config in SMTP_PROVIDERS.items()
-        }
-    })
-
 # Error Handlers
 @app.errorhandler(404)
 def not_found(error):
@@ -634,10 +574,6 @@ def internal_error(error):
     logger.error(f"Internal error: {str(error)}")
     db.session.rollback()
     return jsonify({'error': 'Internal server error'}), 500
-
-@app.errorhandler(403)
-def forbidden(error):
-    return jsonify({'error': 'Access forbidden'}), 403
 
 # Initialize database
 def create_tables():
