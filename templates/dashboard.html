@@ -3,580 +3,485 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>KEXY Email Warmup Dashboard</title>
+    <title>Email Warmup Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .card-hover {
+            transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+        }
+        .card-hover:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+        }
+        .loading {
+            display: none;
+        }
+        .loading.show {
+            display: block;
+        }
+        .alert {
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin: 10px 0;
+        }
+        .alert-success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .alert-error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .alert-warning {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        .progress-bar {
+            background-color: #e9ecef;
+            border-radius: 10px;
+            overflow: hidden;
+            height: 20px;
+        }
+        .progress-fill {
+            background-color: #28a745;
+            height: 100%;
+            transition: width 0.3s ease;
+        }
+        .status-badge {
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .status-active {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .status-paused {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+        .status-completed {
+            background-color: #cce5ff;
+            color: #004085;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+        .modal.show {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-content {
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            max-width: 90%;
+            max-height: 90%;
+            overflow-y: auto;
+        }
+        .provider-help {
+            display: none;
+            margin-top: 8px;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-left: 4px solid #007bff;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .provider-help.show {
+            display: block;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        .tab-button {
+            padding: 8px 16px;
+            border: none;
+            background: none;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+        }
+        .tab-button.active {
+            border-bottom-color: #667eea;
+            color: #667eea;
+        }
+    </style>
 </head>
-<body class="bg-gray-50">
-    <nav class="bg-white shadow-sm border-b border-gray-200">
+<body class="bg-gray-50 min-h-screen">
+    <!-- Navigation -->
+    <nav class="gradient-bg shadow-lg sticky top-0 z-50">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex justify-between h-16">
                 <div class="flex items-center">
-                    <i class="fas fa-envelope-open-text text-blue-600 text-2xl mr-3"></i>
-                    <h1 class="text-xl font-semibold text-gray-900">KEXY Email Warmup System</h1>
-                    <span class="ml-2 bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded">Professional</span>
+                    <i class="fas fa-envelope text-white text-2xl mr-3"></i>
+                    <div class="flex flex-col">
+                        <span class="text-white text-xl font-bold">KEXY Email Warmup System</span>
+                        <span class="text-blue-200 text-xs">Professional</span>
+                    </div>
                 </div>
                 <div class="flex items-center space-x-4">
-                    <span id="user-info" class="text-sm text-gray-700"></span>
-                    <button id="logout-btn" style="display:none;" class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded">
-                        <i class="fas fa-sign-out-alt mr-1"></i> Logout
+                    <div class="text-right">
+                        <div class="text-white text-sm" id="user-welcome">
+                            <i class="fas fa-check-circle text-green-300 mr-1"></i>
+                            Welcome back, scott! (Persistent login active)
+                        </div>
+                    </div>
+                    <button onclick="logout()" class="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition-colors">
+                        <i class="fas fa-sign-out-alt mr-2"></i>Logout
                     </button>
                 </div>
             </div>
         </div>
     </nav>
 
-    <div class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        <!-- Login Form -->
-        <div id="auth-container" class="max-w-md mx-auto">
-            <div id="login-form" class="bg-white shadow-lg rounded-lg px-8 pt-6 pb-8 mb-4">
-                <div class="text-center mb-6">
-                    <i class="fas fa-shield-alt text-blue-600 text-4xl mb-2"></i>
-                    <h2 class="text-2xl font-bold text-gray-900">Secure Login</h2>
-                    <p class="text-gray-600 text-sm">Access your email warmup dashboard</p>
-                </div>
-                <form id="login-form-element">
-                    <div class="mb-4">
-                        <label class="block text-gray-700 text-sm font-bold mb-2">
-                            <i class="fas fa-envelope mr-2"></i>Email
-                        </label>
-                        <input class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500" id="login-email" type="email" placeholder="Enter your email" required>
+    <!-- Main Content -->
+    <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+        <!-- Dashboard Stats -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+            <div class="bg-white overflow-hidden shadow rounded-lg card-hover">
+                <div class="p-5">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <i class="fas fa-paper-plane text-blue-600 text-2xl"></i>
+                        </div>
+                        <div class="ml-5 w-0 flex-1">
+                            <dl>
+                                <dt class="text-sm font-medium text-gray-500 truncate">Total Campaigns</dt>
+                                <dd class="text-lg font-medium text-gray-900" id="total-campaigns">0</dd>
+                            </dl>
+                        </div>
                     </div>
-                    <div class="mb-6">
-                        <label class="block text-gray-700 text-sm font-bold mb-2">
-                            <i class="fas fa-lock mr-2"></i>Password
-                        </label>
-                        <input class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500" id="login-password" type="password" placeholder="Enter your password" required>
-                    </div>
-                    <div class="flex items-center justify-between mb-4">
-                        <button class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg focus:outline-none focus:shadow-outline w-full" type="submit">
-                            <i class="fas fa-sign-in-alt mr-2"></i>Sign In
-                        </button>
-                    </div>
-                    <div class="text-center space-y-2">
-                        <a class="block text-sm text-blue-600 hover:text-blue-800 cursor-pointer" onclick="showForgotPassword()">
-                            <i class="fas fa-key mr-1"></i>Forgot your password?
-                        </a>
-                        <a class="block text-sm text-blue-600 hover:text-blue-800 cursor-pointer" onclick="showRegisterForm()">
-                            Need an account? <i class="fas fa-user-plus ml-1"></i>
-                        </a>
-                    </div>
-                </form>
-                <div class="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
-                    <p class="text-sm text-blue-800 font-semibold"><i class="fas fa-info-circle mr-2"></i>Demo Account:</p>
-                    <p class="text-sm text-blue-700">Email: demo@example.com</p>
-                    <p class="text-sm text-blue-700">Password: demo123</p>
                 </div>
             </div>
 
-            <!-- Register Form -->
-            <div id="register-form" style="display:none;" class="bg-white shadow-lg rounded-lg px-8 pt-6 pb-8 mb-4">
-                <div class="text-center mb-6">
-                    <i class="fas fa-user-plus text-green-600 text-4xl mb-2"></i>
-                    <h2 class="text-2xl font-bold text-gray-900">Create Account</h2>
-                    <p class="text-gray-600 text-sm">Join the email warmup platform</p>
+            <div class="bg-white overflow-hidden shadow rounded-lg card-hover">
+                <div class="p-5">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <i class="fas fa-play-circle text-green-600 text-2xl"></i>
+                        </div>
+                        <div class="ml-5 w-0 flex-1">
+                            <dl>
+                                <dt class="text-sm font-medium text-gray-500 truncate">Active Campaigns</dt>
+                                <dd class="text-lg font-medium text-gray-900" id="active-campaigns">0</dd>
+                            </dl>
+                        </div>
+                    </div>
                 </div>
-                <form id="register-form-element">
-                    <div class="mb-4">
-                        <label class="block text-gray-700 text-sm font-bold mb-2">
-                            <i class="fas fa-user mr-2"></i>Username
-                        </label>
-                        <input class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-green-500" id="register-username" type="text" placeholder="Choose a username" required>
-                    </div>
-                    <div class="mb-4">
-                        <label class="block text-gray-700 text-sm font-bold mb-2">
-                            <i class="fas fa-envelope mr-2"></i>Email
-                        </label>
-                        <input class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-green-500" id="register-email" type="email" placeholder="Enter your email" required>
-                    </div>
-                    <div class="mb-6">
-                        <label class="block text-gray-700 text-sm font-bold mb-2">
-                            <i class="fas fa-lock mr-2"></i>Password
-                        </label>
-                        <input class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-green-500" id="register-password" type="password" placeholder="Create a password (min 6 characters)" required>
-                    </div>
-                    <div class="flex items-center justify-between mb-4">
-                        <button class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg focus:outline-none focus:shadow-outline w-full" type="submit">
-                            <i class="fas fa-user-plus mr-2"></i>Create Account
-                        </button>
-                    </div>
-                    <div class="text-center">
-                        <a class="text-sm text-blue-600 hover:text-blue-800 cursor-pointer" onclick="showLoginForm()">
-                            Already have an account? <i class="fas fa-sign-in-alt ml-1"></i>
-                        </a>
-                    </div>
-                </form>
             </div>
 
-            <!-- Forgot Password Form -->
-            <div id="forgot-password-form" style="display:none;" class="bg-white shadow-lg rounded-lg px-8 pt-6 pb-8 mb-4">
-                <div class="text-center mb-6">
-                    <i class="fas fa-key text-yellow-600 text-4xl mb-2"></i>
-                    <h2 class="text-2xl font-bold text-gray-900">Reset Password</h2>
-                    <p class="text-gray-600 text-sm">Enter your email to receive reset instructions</p>
+            <div class="bg-white overflow-hidden shadow rounded-lg card-hover">
+                <div class="p-5">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <i class="fas fa-envelope-open text-yellow-600 text-2xl"></i>
+                        </div>
+                        <div class="ml-5 w-0 flex-1">
+                            <dl>
+                                <dt class="text-sm font-medium text-gray-500 truncate">Emails Sent</dt>
+                                <dd class="text-lg font-medium text-gray-900" id="emails-sent">0</dd>
+                            </dl>
+                        </div>
+                    </div>
                 </div>
-                <form id="forgot-password-form-element">
-                    <div class="mb-6">
-                        <label class="block text-gray-700 text-sm font-bold mb-2">
-                            <i class="fas fa-envelope mr-2"></i>Email Address
-                        </label>
-                        <input class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-yellow-500" id="forgot-email" type="email" placeholder="Enter your email address" required>
+            </div>
+
+            <div class="bg-white overflow-hidden shadow rounded-lg card-hover">
+                <div class="p-5">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <i class="fas fa-chart-line text-purple-600 text-2xl"></i>
+                        </div>
+                        <div class="ml-5 w-0 flex-1">
+                            <dl>
+                                <dt class="text-sm font-medium text-gray-500 truncate">Success Rate</dt>
+                                <dd class="text-lg font-medium text-gray-900" id="success-rate">0%</dd>
+                            </dl>
+                        </div>
                     </div>
-                    <div class="flex items-center justify-between mb-4">
-                        <button class="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-3 px-6 rounded-lg focus:outline-none focus:shadow-outline w-full" type="submit">
-                            <i class="fas fa-paper-plane mr-2"></i>Send Reset Instructions
-                        </button>
-                    </div>
-                    <div class="text-center">
-                        <a class="text-sm text-blue-600 hover:text-blue-800 cursor-pointer" onclick="showLoginForm()">
-                            <i class="fas fa-arrow-left mr-1"></i>Back to Login
-                        </a>
-                    </div>
-                </form>
+                </div>
             </div>
         </div>
 
-        <!-- Dashboard Content -->
-        <div id="dashboard-content" style="display:none;">
-            <div class="bg-white shadow-lg overflow-hidden sm:rounded-lg mb-8">
-                <div class="px-6 py-5 border-b border-gray-200 flex justify-between items-center">
+        <!-- Main Content Tabs -->
+        <div class="bg-white shadow rounded-lg mb-8">
+            <div class="border-b border-gray-200">
+                <nav class="flex px-6">
+                    <button class="tab-button active" onclick="switchTab('campaigns')">
+                        <i class="fas fa-list mr-2"></i>Email Warmup Campaigns
+                    </button>
+                    <button class="tab-button" onclick="switchTab('create')">
+                        <i class="fas fa-plus-circle mr-2"></i>Create New Campaign
+                    </button>
+                    <button class="tab-button" onclick="switchTab('analytics')">
+                        <i class="fas fa-chart-bar mr-2"></i>Analytics
+                    </button>
+                </nav>
+            </div>
+
+            <!-- Campaigns Tab -->
+            <div id="campaigns-tab" class="tab-content active p-6">
+                <div class="flex justify-between items-center mb-6">
                     <div>
-                        <h3 class="text-lg leading-6 font-medium text-gray-900">
-                            <i class="fas fa-envelope-open-text mr-2"></i>Email Warmup Campaigns
-                        </h3>
-                        <p class="mt-1 max-w-2xl text-sm text-gray-500">Manage and monitor your email warmup campaigns</p>
+                        <h2 class="text-lg font-medium text-gray-900">
+                            <i class="fas fa-envelope text-blue-600 mr-2"></i>Email Warmup Campaigns
+                        </h2>
+                        <p class="text-sm text-gray-600 mt-1">Manage and monitor your email warmup campaigns</p>
                     </div>
-                    <button id="create-campaign-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">
+                    <button onclick="switchTab('create')" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
                         <i class="fas fa-plus mr-2"></i>New Campaign
                     </button>
                 </div>
-                <div>
-                    <ul class="divide-y divide-gray-200" id="campaigns-list">
-                        <li class="px-6 py-4 text-center text-gray-500">
-                            No campaigns yet. Create your first campaign to get started!
-                        </li>
-                    </ul>
-                </div>
-            </div>
-        </div>
-    </div>
 
-    <!-- Create Campaign Modal -->
-    <div id="create-campaign-modal" style="display:none;" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-        <div class="relative top-20 mx-auto p-5 border w-full max-w-2xl shadow-lg rounded-lg bg-white">
-            <div class="mt-3">
-                <div class="flex justify-between items-center mb-6">
-                    <h3 class="text-xl font-medium text-gray-900">
-                        <i class="fas fa-plus-circle text-blue-600 mr-2"></i>Create New Campaign
-                    </h3>
-                    <button id="close-modal-btn" class="text-gray-400 hover:text-gray-600">
-                        <i class="fas fa-times text-xl"></i>
-                    </button>
-                </div>
-                
-                <form id="create-campaign-form">
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                        <div>
-                            <label class="block text-gray-700 text-sm font-bold mb-2">
-                                <i class="fas fa-tag mr-2"></i>Campaign Name
-                            </label>
-                            <input type="text" id="campaign-name" class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="My Email Warmup Campaign" required>
-                        </div>
-
-                        <div>
-                            <label class="block text-gray-700 text-sm font-bold mb-2">
-                                <i class="fas fa-envelope mr-2"></i>Email Address
-                            </label>
-                            <input type="email" id="campaign-email" class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="your@email.com" required>
-                        </div>
-                    </div>
-
-                    <div class="mb-4">
-                        <label class="block text-gray-700 text-sm font-bold mb-2">
-                            <i class="fas fa-cloud mr-2"></i>Email Provider
-                        </label>
-                        <select id="campaign-provider" class="shadow border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            <option value="gmail">Gmail</option>
-                            <option value="outlook">Outlook/Hotmail</option>
-                            <option value="yahoo">Yahoo Mail</option>
-                            <option value="custom">Custom SMTP</option>
-                        </select>
-                    </div>
-
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                        <div>
-                            <label class="block text-gray-700 text-sm font-bold mb-2">
-                                <i class="fas fa-server mr-2"></i>SMTP Host
-                            </label>
-                            <input type="text" id="smtp-host" class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="smtp.gmail.com" required>
-                        </div>
-
-                        <div>
-                            <label class="block text-gray-700 text-sm font-bold mb-2">
-                                <i class="fas fa-plug mr-2"></i>SMTP Port
-                            </label>
-                            <select id="smtp-port" class="shadow border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500">
-                                <option value="587">587 (TLS)</option>
-                                <option value="465">465 (SSL)</option>
-                                <option value="25">25 (Unsecured)</option>
-                            </select>
-                        </div>
-
-                        <div>
-                            <label class="block text-gray-700 text-sm font-bold mb-2">
-                                <i class="fas fa-user mr-2"></i>SMTP Username
-                            </label>
-                            <input type="text" id="smtp-username" class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Usually your email address">
-                        </div>
-
-                        <div>
-                            <label class="block text-gray-700 text-sm font-bold mb-2">
-                                <i class="fas fa-key mr-2"></i>SMTP Password
-                            </label>
-                            <input type="password" id="smtp-password" class="shadow appearance-none border rounded w-full py-3 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Your email password or app password" required>
-                        </div>
-                    </div>
-
-                    <!-- Modal Actions -->
-                    <div class="flex justify-between items-center pt-6 border-t border-gray-200">
-                        <div class="flex space-x-3">
-                            <button type="button" id="cancel-campaign-btn" class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg">
-                                <i class="fas fa-times mr-2"></i>Cancel
-                            </button>
-                            <button type="button" id="validate-smtp-btn" class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded-lg">
-                                <i class="fas fa-check-circle mr-2"></i>Validate SMTP
-                            </button>
-                        </div>
-                        <button type="submit" id="save-campaign-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">
-                            <i class="fas fa-save mr-2"></i>Create Campaign
+                <!-- Campaign List -->
+                <div id="campaigns-container">
+                    <div class="text-center py-12 text-gray-500">
+                        <i class="fas fa-inbox text-4xl mb-4"></i>
+                        <p class="text-lg">No campaigns yet. Create your first campaign to get started!</p>
+                        <button onclick="switchTab('create')" class="mt-4 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+                            Create Campaign
                         </button>
                     </div>
-                </form>
+                </div>
+            </div>
+
+            <!-- Create Campaign Tab -->
+            <div id="create-tab" class="tab-content p-6">
+                <div class="max-w-4xl mx-auto">
+                    <div class="mb-6">
+                        <h2 class="text-lg font-medium text-gray-900">
+                            <i class="fas fa-plus-circle text-blue-600 mr-2"></i>Create New Campaign
+                        </h2>
+                        <p class="text-sm text-gray-600 mt-1">Set up a new email warmup campaign to improve your deliverability</p>
+                    </div>
+
+                    <form id="campaign-form" class="space-y-6">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <!-- Campaign Details -->
+                            <div class="space-y-4">
+                                <h3 class="text-md font-medium text-gray-900 border-b pb-2">Campaign Details</h3>
+                                
+                                <div>
+                                    <label for="campaign-name" class="block text-sm font-medium text-gray-700">Campaign Name</label>
+                                    <input type="text" id="campaign-name" name="name" required
+                                           class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                                           placeholder="My Email Warmup Campaign">
+                                </div>
+
+                                <div>
+                                    <label for="email-address" class="block text-sm font-medium text-gray-700">Email Address</label>
+                                    <input type="email" id="email-address" name="email" required
+                                           class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                                           placeholder="your.email@example.com">
+                                </div>
+                            </div>
+
+                            <!-- Email Provider Configuration -->
+                            <div class="space-y-4">
+                                <h3 class="text-md font-medium text-gray-900 border-b pb-2">Email Provider</h3>
+
+                                <div>
+                                    <label for="email-provider" class="block text-sm font-medium text-gray-700">Email Provider</label>
+                                    <select id="email-provider" name="provider" required 
+                                            class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                                            onchange="handleProviderChange(this.value)">
+                                        <option value="">Select Email Provider</option>
+                                        <optgroup label="Popular Providers">
+                                            <option value="gmail">Gmail</option>
+                                            <option value="outlook">Outlook/Hotmail</option>
+                                            <option value="yahoo">Yahoo Mail</option>
+                                        </optgroup>
+                                        <optgroup label="Amazon SES Regions">
+                                            <option value="amazon_ses_us_east_1">🇺🇸 Amazon SES (US East 1 - N. Virginia)</option>
+                                            <option value="amazon_ses_us_west_2">🇺🇸 Amazon SES (US West 2 - Oregon)</option>
+                                            <option value="amazon_ses_us_west_1">🇺🇸 Amazon SES (US West 1 - N. California)</option>
+                                            <option value="amazon_ses_eu_west_1">🇪🇺 Amazon SES (EU West 1 - Ireland)</option>
+                                            <option value="amazon_ses_eu_central_1">🇪🇺 Amazon SES (EU Central 1 - Frankfurt)</option>
+                                            <option value="amazon_ses_ap_southeast_1">🌏 Amazon SES (Asia Pacific - Singapore)</option>
+                                            <option value="amazon_ses_ap_southeast_2">🌏 Amazon SES (Asia Pacific - Sydney)</option>
+                                            <option value="amazon_ses_ap_northeast_1">🌏 Amazon SES (Asia Pacific - Tokyo)</option>
+                                            <option value="amazon_ses_ca_central_1">🇨🇦 Amazon SES (Canada Central)</option>
+                                            <option value="custom_ses">🔧 Amazon SES (Custom Region)</option>
+                                        </optgroup>
+                                        <optgroup label="Custom">
+                                            <option value="custom_smtp">Custom SMTP</option>
+                                        </optgroup>
+                                    </select>
+                                    
+                                    <!-- Provider Help Text -->
+                                    <div id="provider-help" class="provider-help">
+                                        <!-- Dynamic help content will be inserted here -->
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label for="smtp-username" class="block text-sm font-medium text-gray-700">
+                                            <span id="username-label">SMTP Username</span>
+                                        </label>
+                                        <input type="text" id="smtp-username" name="username" required
+                                               class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                                               placeholder="username">
+                                    </div>
+                                    
+                                    <div>
+                                        <label for="smtp-password" class="block text-sm font-medium text-gray-700">
+                                            <span id="password-label">SMTP Password</span>
+                                        </label>
+                                        <input type="password" id="smtp-password" name="password" required
+                                               class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                                               placeholder="password">
+                                    </div>
+                                </div>
+
+                                <!-- Custom SMTP Fields -->
+                                <div id="custom-smtp-fields" style="display: none;">
+                                    <div class="grid grid-cols-3 gap-4">
+                                        <div class="col-span-2">
+                                            <label for="smtp-host" class="block text-sm font-medium text-gray-700">SMTP Host</label>
+                                            <input type="text" id="smtp-host" name="smtp_host"
+                                                   class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                                                   placeholder="smtp.example.com">
+                                        </div>
+                                        <div>
+                                            <label for="smtp-port" class="block text-sm font-medium text-gray-700">Port</label>
+                                            <input type="number" id="smtp-port" name="smtp_port" value="587"
+                                                   class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                                        </div>
+                                    </div>
+                                    <div class="flex items-center mt-2">
+                                        <input type="checkbox" id="use-tls" name="use_tls" checked
+                                               class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
+                                        <label for="use-tls" class="ml-2 block text-sm text-gray-900">Use TLS</label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Campaign Settings -->
+                        <div class="space-y-4">
+                            <h3 class="text-md font-medium text-gray-900 border-b pb-2">Campaign Settings</h3>
+                            
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div>
+                                    <label for="industry" class="block text-sm font-medium text-gray-700">Industry</label>
+                                    <select id="industry" name="industry" required
+                                            class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                                        <option value="">Select Industry</option>
+                                        <option value="technology">Technology</option>
+                                        <option value="finance">Finance</option>
+                                        <option value="healthcare">Healthcare</option>
+                                        <option value="education">Education</option>
+                                        <option value="retail">Retail</option>
+                                        <option value="marketing">Marketing</option>
+                                        <option value="consulting">Consulting</option>
+                                        <option value="real_estate">Real Estate</option>
+                                        <option value="other">Other</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label for="daily-volume" class="block text-sm font-medium text-gray-700">Daily Volume</label>
+                                    <input type="number" id="daily-volume" name="daily_volume" min="5" max="100" value="10"
+                                           class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                                    <p class="text-xs text-gray-500 mt-1">5-100 emails per day</p>
+                                </div>
+
+                                <div>
+                                    <label for="warmup-days" class="block text-sm font-medium text-gray-700">Warmup Days</label>
+                                    <input type="number" id="warmup-days" name="warmup_days" min="7" max="90" value="30"
+                                           class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                                    <p class="text-xs text-gray-500 mt-1">7-90 days recommended</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <div class="flex justify-between items-center pt-6 border-t border-gray-200">
+                            <div class="flex space-x-3">
+                                <button type="button" onclick="testConnection()" 
+                                        class="bg-yellow-600 text-white px-6 py-2 rounded-lg hover:bg-yellow-700 transition-colors">
+                                    <i class="fas fa-plug mr-2"></i>Validate SMTP
+                                </button>
+                            </div>
+                            <div class="flex space-x-3">
+                                <button type="button" onclick="switchTab('campaigns')" 
+                                        class="bg-gray-300 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-400 transition-colors">
+                                    Cancel
+                                </button>
+                                <button type="submit" 
+                                        class="bg-blue-600 text-white px-8 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+                                    <i class="fas fa-rocket mr-2"></i>Create Campaign
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Analytics Tab -->
+            <div id="analytics-tab" class="tab-content p-6">
+                <div>
+                    <h2 class="text-lg font-medium text-gray-900 mb-6">
+                        <i class="fas fa-chart-bar text-blue-600 mr-2"></i>Analytics Dashboard
+                    </h2>
+                    <div class="text-center py-12 text-gray-500">
+                        <i class="fas fa-chart-line text-4xl mb-4"></i>
+                        <p class="text-lg">Analytics will appear here once you have active campaigns</p>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 
-    <div id="notification-container" class="fixed top-4 right-4 z-50"></div>
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="loading fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-6 flex items-center space-x-3">
+            <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+            <span class="text-gray-700">Processing...</span>
+        </div>
+    </div>
 
-    <script>
-        console.log('Dashboard script loaded');
-        let currentUser = null;
-        
-        // Show/hide forms
-        function showLoginForm() {
-            document.getElementById('login-form').style.display = 'block';
-            document.getElementById('register-form').style.display = 'none';
-            document.getElementById('forgot-password-form').style.display = 'none';
-        }
+    <!-- Toast Container -->
+    <div id="toast-container" class="fixed top-4 right-4 z-50 space-y-2">
+        <!-- Toast notifications will be inserted here -->
+    </div>
 
-        function showRegisterForm() {
-            document.getElementById('login-form').style.display = 'none';
-            document.getElementById('register-form').style.display = 'block';
-            document.getElementById('forgot-password-form').style.display = 'none';
-        }
+    <!-- Modals -->
+    <div id="campaign-modal" class="modal">
+        <div class="modal-content">
+            <h3 class="text-lg font-medium mb-4">Campaign Details</h3>
+            <div id="modal-content">
+                <!-- Modal content will be populated dynamically -->
+            </div>
+            <div class="flex justify-end mt-4">
+                <button onclick="closeModal()" class="bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400 transition-colors">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
 
-        function showForgotPassword() {
-            document.getElementById('login-form').style.display = 'none';
-            document.getElementById('register-form').style.display = 'none';
-            document.getElementById('forgot-password-form').style.display = 'block';
-        }
-
-        function showDashboard() {
-            document.getElementById('auth-container').style.display = 'none';
-            document.getElementById('dashboard-content').style.display = 'block';
-            document.getElementById('logout-btn').style.display = 'block';
-            loadCampaigns();
-        }
-
-        function showAuth() {
-            document.getElementById('auth-container').style.display = 'block';
-            document.getElementById('dashboard-content').style.display = 'none';
-            document.getElementById('logout-btn').style.display = 'none';
-        }
-
-        function showCampaignModal() {
-            document.getElementById('create-campaign-modal').style.display = 'block';
-        }
-
-        function hideCampaignModal() {
-            document.getElementById('create-campaign-modal').style.display = 'none';
-            document.getElementById('create-campaign-form').reset();
-        }
-
-        function showNotification(message, type) {
-            const container = document.getElementById('notification-container');
-            const notification = document.createElement('div');
-            
-            const bgColor = type === 'success' ? 'bg-green-100 border-green-400 text-green-700' : 'bg-red-100 border-red-400 text-red-700';
-            const icon = type === 'success' ? 'fa-check-circle' : 'fa-times-circle';
-            
-            notification.className = `border-l-4 p-4 mb-4 rounded-r-md ${bgColor}`;
-            notification.innerHTML = `<div class="flex items-center"><i class="fas ${icon} mr-2"></i><span>${message}</span></div>`;
-            
-            container.appendChild(notification);
-            
-            setTimeout(() => {
-                notification.remove();
-            }, 5000);
-        }
-
-        async function loadCampaigns() {
-            try {
-                const response = await fetch('/api/campaigns');
-                const campaigns = await response.json();
-                
-                const campaignsList = document.getElementById('campaigns-list');
-                
-                if (campaigns.length === 0) {
-                    campaignsList.innerHTML = '<li class="px-6 py-4 text-center text-gray-500">No campaigns yet. Create your first campaign to get started!</li>';
-                } else {
-                    let campaignsHTML = '';
-                    campaigns.forEach(campaign => {
-                        campaignsHTML += `
-                            <li class="px-6 py-4">
-                                <div class="flex items-center justify-between">
-                                    <div>
-                                        <h4 class="text-lg font-medium text-gray-900">${campaign.name}</h4>
-                                        <p class="text-sm text-gray-500">${campaign.email_address} - ${campaign.provider}</p>
-                                        <p class="text-sm text-gray-400">Status: ${campaign.status}</p>
-                                    </div>
-                                    <div class="flex space-x-2">
-                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                            ${campaign.status}
-                                        </span>
-                                    </div>
-                                </div>
-                            </li>
-                        `;
-                    });
-                    campaignsList.innerHTML = campaignsHTML;
-                }
-            } catch (error) {
-                console.error('Failed to load campaigns:', error);
-            }
-        }
-
-        // Login form handler
-        document.getElementById('login-form-element').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            
-            const email = document.getElementById('login-email').value;
-            const password = document.getElementById('login-password').value;
-            
-            console.log('Login attempt:', email);
-
-            try {
-                const response = await fetch('/api/login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email: email, password: password })
-                });
-
-                const data = await response.json();
-                console.log('Login response:', data);
-
-                if (data.success) {
-                    currentUser = data.user;
-                    document.getElementById('user-info').textContent = `Welcome, ${data.user.username}`;
-                    showNotification(data.message, 'success');
-                    showDashboard();
-                } else {
-                    showNotification(data.message, 'error');
-                }
-            } catch (error) {
-                console.error('Login error:', error);
-                showNotification('Login failed. Please try again.', 'error');
-            }
-        });
-
-        // Register form handler
-        document.getElementById('register-form-element').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            
-            const username = document.getElementById('register-username').value;
-            const email = document.getElementById('register-email').value;
-            const password = document.getElementById('register-password').value;
-
-            try {
-                const response = await fetch('/api/register', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username: username, email: email, password: password })
-                });
-
-                const data = await response.json();
-
-                if (data.success) {
-                    currentUser = data.user;
-                    document.getElementById('user-info').textContent = `Welcome, ${data.user.username}`;
-                    showNotification(data.message, 'success');
-                    showDashboard();
-                } else {
-                    showNotification(data.message, 'error');
-                }
-            } catch (error) {
-                showNotification('Registration failed. Please try again.', 'error');
-            }
-        });
-
-        // Forgot password form handler
-        document.getElementById('forgot-password-form-element').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            
-            const email = document.getElementById('forgot-email').value;
-
-            try {
-                const response = await fetch('/api/forgot-password', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email: email })
-                });
-
-                const data = await response.json();
-                showNotification(data.message, 'success');
-            } catch (error) {
-                showNotification('Request failed. Please try again.', 'error');
-            }
-        });
-
-        // Logout handler
-        document.getElementById('logout-btn').addEventListener('click', async function() {
-            try {
-                await fetch('/api/logout', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                
-                currentUser = null;
-                document.getElementById('user-info').textContent = '';
-                showNotification('Logged out successfully', 'success');
-                showAuth();
-            } catch (error) {
-                showNotification('Logout failed', 'error');
-            }
-        });
-
-        // Create campaign button - NOW OPENS MODAL
-        document.getElementById('create-campaign-btn').addEventListener('click', function() {
-            showCampaignModal();
-        });
-
-        // Modal handlers
-        document.getElementById('close-modal-btn').addEventListener('click', hideCampaignModal);
-        document.getElementById('cancel-campaign-btn').addEventListener('click', hideCampaignModal);
-
-        // Validate SMTP button
-        document.getElementById('validate-smtp-btn').addEventListener('click', async function() {
-            const email = document.getElementById('campaign-email').value;
-            const password = document.getElementById('smtp-password').value;
-            const smtpHost = document.getElementById('smtp-host').value;
-            const smtpPort = document.getElementById('smtp-port').value;
-            const smtpUsername = document.getElementById('smtp-username').value;
-            const provider = document.getElementById('campaign-provider').value;
-
-            if (!email || !password || !smtpHost) {
-                showNotification('Please fill in all required fields', 'error');
-                return;
-            }
-
-            try {
-                const response = await fetch('/api/test-smtp', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        email,
-                        password,
-                        smtp_host: smtpHost,
-                        smtp_port: smtpPort,
-                        smtp_username: smtpUsername,
-                        provider
-                    })
-                });
-
-                const result = await response.json();
-                
-                if (result.success) {
-                    showNotification('SMTP validation successful!', 'success');
-                } else {
-                    showNotification(result.message, 'error');
-                }
-                
-            } catch (error) {
-                showNotification('SMTP validation failed', 'error');
-            }
-        });
-
-        // Create campaign form
-        document.getElementById('create-campaign-form').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            
-            const formData = {
-                name: document.getElementById('campaign-name').value,
-                email: document.getElementById('campaign-email').value,
-                smtp_host: document.getElementById('smtp-host').value,
-                smtp_port: document.getElementById('smtp-port').value,
-                smtp_username: document.getElementById('smtp-username').value,
-                smtp_password: document.getElementById('smtp-password').value,
-                provider: document.getElementById('campaign-provider').value
-            };
-
-            try {
-                const response = await fetch('/api/campaigns', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(formData)
-                });
-
-                const data = await response.json();
-
-                if (data.success) {
-                    showNotification(data.message, 'success');
-                    hideCampaignModal();
-                    loadCampaigns();
-                } else {
-                    showNotification(data.message, 'error');
-                }
-            } catch (error) {
-                showNotification('Campaign creation failed', 'error');
-            }
-        });
-
-        // Auto-fill SMTP settings based on provider
-        document.getElementById('campaign-provider').addEventListener('change', function() {
-            const provider = this.value;
-            const smtpHost = document.getElementById('smtp-host');
-            const smtpPort = document.getElementById('smtp-port');
-            const smtpUsername = document.getElementById('smtp-username');
-            
-            switch(provider) {
-                case 'gmail':
-                    smtpHost.value = 'smtp.gmail.com';
-                    smtpPort.value = '587';
-                    smtpUsername.value = document.getElementById('campaign-email').value;
-                    break;
-                case 'outlook':
-                    smtpHost.value = 'smtp-mail.outlook.com';
-                    smtpPort.value = '587';
-                    smtpUsername.value = document.getElementById('campaign-email').value;
-                    break;
-                case 'yahoo':
-                    smtpHost.value = 'smtp.mail.yahoo.com';
-                    smtpPort.value = '587';
-                    smtpUsername.value = document.getElementById('campaign-email').value;
-                    break;
-                default:
-                    smtpHost.value = '';
-                    smtpPort.value = '587';
-                    smtpUsername.value = '';
-            }
-        });
-
-        // Auto-fill username when email changes
-        document.getElementById('campaign-email').addEventListener('change', function() {
-            document.getElementById('smtp-username').value = this.value;
-        });
-
-        console.log('All event listeners attached');
-    </script>
+    <script src="/static/js/dashboard.js"></script>
 </body>
 </html>
