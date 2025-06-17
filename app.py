@@ -24,14 +24,10 @@ if database_url.startswith('postgres://'):
     database_url = database_url.replace('postgres://', 'postgresql://', 1)
 app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
-# PERSISTENT SESSIONS - Sessions stored in database, NOT memory
 app.config['SESSION_PERMANENT'] = True
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
 
 db = SQLAlchemy(app)
-
-# Logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -46,8 +42,6 @@ class User(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     last_login = db.Column(db.DateTime, nullable=True)
     is_active = db.Column(db.Boolean, default=True)
-    
-    # PERSISTENT LOGIN TOKENS
     login_tokens = db.relationship('LoginToken', backref='user', lazy=True, cascade="all, delete-orphan")
     
     def check_password(self, password):
@@ -66,32 +60,21 @@ class User(db.Model):
         return self.reset_token == token and self.reset_token_expires > datetime.utcnow()
     
     def create_persistent_login(self):
-        """Create a persistent login token that survives server restarts"""
-        # Clean up old tokens
-        LoginToken.query.filter(
-            LoginToken.user_id == self.id,
-            LoginToken.expires_at < datetime.utcnow()
-        ).delete()
-        
-        # Create new token
+        LoginToken.query.filter(LoginToken.user_id == self.id, LoginToken.expires_at < datetime.utcnow()).delete()
         raw_token = secrets.token_urlsafe(32)
         token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
-        
         login_token = LoginToken(
             user_id=self.id,
             token_hash=token_hash,
-            expires_at=datetime.utcnow() + timedelta(days=30),  # 30 days
+            expires_at=datetime.utcnow() + timedelta(days=30),
             created_at=datetime.utcnow(),
             user_agent=request.headers.get('User-Agent', '')[:200] if request else ''
         )
-        
         db.session.add(login_token)
         db.session.commit()
-        
         return raw_token
     
     def clear_all_tokens(self):
-        """Clear all login tokens for logout"""
         LoginToken.query.filter(LoginToken.user_id == self.id).delete()
         db.session.commit()
     
@@ -104,9 +87,7 @@ class User(db.Model):
             'last_login': self.last_login.isoformat() if self.last_login else None
         }
 
-# PERSISTENT LOGIN TOKEN MODEL
 class LoginToken(db.Model):
-    """Database-stored login tokens that survive server restarts"""
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     token_hash = db.Column(db.String(64), nullable=False, index=True, unique=True)
@@ -117,27 +98,19 @@ class LoginToken(db.Model):
     
     @staticmethod
     def find_valid_token(token):
-        """Find and validate a login token"""
         if not token:
             return None
-            
         token_hash = hashlib.sha256(token.encode()).hexdigest()
-        
-        # Find valid, non-expired token
         login_token = LoginToken.query.filter(
             LoginToken.token_hash == token_hash,
             LoginToken.expires_at > datetime.utcnow()
         ).first()
-        
         if login_token:
-            # Update last used time
             login_token.last_used = datetime.utcnow()
             db.session.commit()
-            
         return login_token
     
     def is_valid(self):
-        """Check if token is still valid"""
         return self.expires_at > datetime.utcnow()
 
 class Campaign(db.Model):
@@ -170,56 +143,36 @@ class Campaign(db.Model):
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'started_at': self.started_at.isoformat() if self.started_at else None
         }
-
-# AUTHENTICATION FUNCTIONS - BULLETPROOF PERSISTENT LOGIN
+# Authentication Functions
 def get_current_user():
-    """Get current user - checks session AND persistent tokens"""
     user = None
-    
-    # Method 1: Try session first
     if 'user_id' in session:
         user = User.query.get(session['user_id'])
         if user and user.is_active:
-            logger.info(f"User authenticated via session: {user.username}")
             return user
     
-    # Method 2: Try persistent login token
     token = request.cookies.get('persistent_login')
     if token:
-        logger.info(f"Attempting persistent login with token")
         login_token = LoginToken.find_valid_token(token)
         if login_token and login_token.is_valid():
             user = User.query.get(login_token.user_id)
             if user and user.is_active:
-                # Restore session
                 session.permanent = True
                 session['user_id'] = user.id
                 session['username'] = user.username
                 session['email'] = user.email
-                session['logged_in_at'] = datetime.utcnow().isoformat()
-                
-                logger.info(f"User authenticated via persistent token: {user.username}")
                 return user
-            else:
-                logger.warning(f"Invalid user for token: {login_token.user_id}")
-        else:
-            logger.warning(f"Invalid or expired token")
-    
     return None
 
 def login_user_persistent(user, remember_me=True):
-    """Login user with bulletproof persistence"""
     try:
-        # Update user
         user.last_login = datetime.utcnow()
         db.session.commit()
         
-        # Set session (permanent by default)
         session.permanent = True
         session['user_id'] = user.id
         session['username'] = user.username
         session['email'] = user.email
-        session['logged_in_at'] = datetime.utcnow().isoformat()
         
         response_data = {
             'success': True,
@@ -228,53 +181,40 @@ def login_user_persistent(user, remember_me=True):
         }
         
         response = make_response(jsonify(response_data))
-        
-        # ALWAYS create persistent login token
         persistent_token = user.create_persistent_login()
         response.set_cookie(
             'persistent_login',
             persistent_token,
-            max_age=30*24*60*60,  # 30 days
+            max_age=30*24*60*60,
             httponly=True,
-            secure=False,  # Set to True in production with HTTPS
+            secure=False,
             samesite='Lax'
         )
-        
-        logger.info(f"User logged in with persistence: {user.username}")
         return response
-        
     except Exception as e:
         logger.error(f"Login error: {e}")
         db.session.rollback()
         return jsonify({'success': False, 'message': 'Login failed'})
 
 def logout_user_persistent():
-    """Logout user and clear all persistence"""
     user = get_current_user()
     if user:
         user.clear_all_tokens()
-        logger.info(f"User logged out: {user.username}")
-    
-    # Clear session
     session.clear()
-    
-    # Clear cookies
     response = make_response(jsonify({'success': True, 'message': 'Logged out successfully'}))
     response.set_cookie('persistent_login', '', expires=0)
-    
     return response
 
 def require_auth(f):
-    """Decorator for routes that require authentication"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
         user = get_current_user()
         if not user:
-            return jsonify({'error': 'Authentication required', 'redirect': '/login'}), 401
+            return jsonify({'error': 'Authentication required'}), 401
         return f(*args, **kwargs)
     return decorated_function
 
-# SMTP PROVIDERS - COMPLETE LIST WITH AWS SES
+# SMTP Providers
 SMTP_PROVIDERS = {
     'gmail': {
         'smtp_host': 'smtp.gmail.com',
@@ -313,10 +253,8 @@ SMTP_PROVIDERS = {
         'instructions': 'Enter your custom SMTP settings'
     }
 }
-
 # Utility Functions
 def detect_email_provider(email):
-    """Auto-detect email provider from email address"""
     try:
         domain = email.split('@')[-1].lower()
         provider_mappings = {
@@ -332,138 +270,141 @@ def detect_email_provider(email):
     except:
         return 'custom'
 
+def clean_smtp_host(smtp_host):
+    if not smtp_host:
+        return smtp_host
+    smtp_host = smtp_host.strip()
+    if smtp_host.startswith('http://'):
+        smtp_host = smtp_host[7:]
+    elif smtp_host.startswith('https://'):
+        smtp_host = smtp_host[8:]
+    elif smtp_host.startswith('smtp://'):
+        smtp_host = smtp_host[7:]
+    smtp_host = smtp_host.split('/')[0]
+    return smtp_host
+
 def is_aws_ses_smtp_username(username):
-    """Check if username looks like AWS SES SMTP credentials"""
     return bool(re.match(r'^[A-Z0-9]{20}$', username))
 
 def validate_smtp_comprehensive(email, password, smtp_host, smtp_port, smtp_username=None, provider='custom'):
-    """Enhanced SMTP validation with AWS SES support"""
     if not smtp_username:
         smtp_username = email
     
-    logger.info(f"SMTP Validation - Host: {smtp_host}, Port: {smtp_port}, Username: {smtp_username}, Provider: {provider}")
+    smtp_host = clean_smtp_host(smtp_host)
+    logger.info(f"SMTP Validation - Provider: {provider}, Host: {smtp_host}, Port: {smtp_port}")
     
     try:
-        # Enhanced AWS SES validation
         if provider == 'amazon_ses':
+            if not smtp_host.startswith('email-smtp.'):
+                return {
+                    'success': False,
+                    'message': f'Invalid AWS SES SMTP host. Use format: email-smtp.region.amazonaws.com',
+                    'error_type': 'aws_ses_host_error'
+                }
             if not is_aws_ses_smtp_username(smtp_username):
                 return {
                     'success': False,
-                    'message': f'❌ Invalid AWS SES SMTP username format. Expected 20-character alphanumeric string, got: {smtp_username}',
-                    'error_type': 'aws_ses_username_error',
-                    'suggestions': [
-                        'Use AWS SES SMTP credentials (not IAM credentials)',
-                        'Username should be 20 characters like "AKIAIOSFODNN7EXAMPLE"',
-                        'Get SMTP credentials from AWS SES Console > SMTP Settings'
-                    ]
+                    'message': f'Invalid AWS SES SMTP username format. Expected 20-character alphanumeric',
+                    'error_type': 'aws_ses_username_error'
                 }
         
-        # Test DNS resolution first
         try:
             socket.gethostbyname(smtp_host)
-            logger.info(f"DNS resolution successful for {smtp_host}")
         except socket.gaierror as dns_error:
-            logger.error(f"DNS resolution failed for {smtp_host}: {dns_error}")
             return {
                 'success': False,
-                'message': f'❌ Cannot resolve SMTP host "{smtp_host}". Please check the hostname.',
-                'error_type': 'dns_error',
-                'suggestions': [
-                    'Verify the SMTP hostname is correct',
-                    'Check if you need a different region for AWS SES',
-                    'Ensure your network can resolve DNS'
-                ]
+                'message': f'Cannot resolve SMTP host "{smtp_host}". Please check the hostname.',
+                'error_type': 'dns_error'
             }
         
-        # Test SMTP connection
-        logger.info(f"Attempting SMTP connection to {smtp_host}:{smtp_port}")
-        
-        if smtp_port == 465:
-            context = ssl.create_default_context()
-            server = smtplib.SMTP_SSL(smtp_host, smtp_port, context=context, timeout=30)
-            logger.info("Connected using SSL")
-        else:
-            server = smtplib.SMTP(smtp_host, smtp_port, timeout=30)
-            logger.info("Connected using regular SMTP")
-            if smtp_port in [587, 25]:
-                server.starttls()
-                logger.info("Started TLS")
-        
-        # Test authentication
-        logger.info(f"Attempting authentication for {smtp_username}")
-        server.login(smtp_username, password)
-        logger.info("Authentication successful")
-        
-        # Send test email
-        test_msg = MIMEText(f"""
-✅ SMTP Configuration Validated Successfully!
+        server = None
+        try:
+            if smtp_port == 465:
+                context = ssl.create_default_context()
+                server = smtplib.SMTP_SSL(smtp_host, smtp_port, context=context, timeout=30)
+            else:
+                server = smtplib.SMTP(smtp_host, smtp_port, timeout=30)
+                if smtp_port in [587, 25]:
+                    server.starttls()
+            
+            server.login(smtp_username, password)
+            
+            test_msg = MIMEText(f"""
+SMTP Configuration Validated Successfully!
 
 Your email configuration has been tested and verified:
+Email: {email}
+SMTP Host: {smtp_host}
+Port: {smtp_port}
+Username: {smtp_username}
+Provider: {provider.upper()}
 
-📧 Email: {email}
-🖥️ SMTP Host: {smtp_host}
-🔌 Port: {smtp_port}
-👤 Username: {smtp_username}
-⚙️ Provider: {provider.upper()}
-
-🎉 Your account is now ready for email warmup campaigns.
+Your account is now ready for email warmup campaigns.
 
 ---
 KEXY Email Warmup System
-        """)
-        
-        test_msg['From'] = email
-        test_msg['To'] = email
-        test_msg['Subject'] = "✅ SMTP Validation Successful - KEXY Email Warmup"
-        
-        server.send_message(test_msg)
-        server.quit()
-        
-        logger.info(f"SMTP validation successful for {email}")
-        
-        return {
-            'success': True,
-            'message': f'✅ SMTP validation successful! Test email sent to {email}',
-            'details': f'Connected to {smtp_host}:{smtp_port} using {provider}',
-            'provider': provider
-        }
-        
-    except smtplib.SMTPAuthenticationError as auth_error:
-        logger.error(f"SMTP Authentication failed for {email}: {auth_error}")
-        suggestions = []
-        if provider == 'amazon_ses':
-            suggestions = [
-                'Ensure you are using AWS SES SMTP credentials (not IAM credentials)',
-                'Verify your AWS SES account is not in sandbox mode',
-                'Check that your domain/email is verified in AWS SES',
-                'Confirm you are using the correct AWS region'
-            ]
-        elif provider == 'gmail':
-            suggestions = [
-                'Use an App Password instead of your regular password',
-                'Enable 2-Factor Authentication first',
-                'Generate App Password from Google Account Security settings'
-            ]
-        elif provider == 'yahoo':
-            suggestions = [
-                'Use an App Password instead of your regular password',
-                'Enable 2-Factor Authentication first'
-            ]
-        else:
-            suggestions = ['Check your username and password', 'Verify account settings']
+            """)
             
-        return {
-            'success': False,
-            'message': f'❌ SMTP Authentication failed: {str(auth_error)}',
-            'error_type': 'auth_error',
-            'suggestions': suggestions
-        }
+            test_msg['From'] = email
+            test_msg['To'] = email
+            test_msg['Subject'] = "SMTP Validation Successful - KEXY Email Warmup"
+            
+            server.send_message(test_msg)
+            server.quit()
+            
+            return {
+                'success': True,
+                'message': f'SMTP validation successful! Test email sent to {email}',
+                'details': f'Connected to {smtp_host}:{smtp_port} using {provider}',
+                'provider': provider
+            }
+            
+        except smtplib.SMTPAuthenticationError as auth_error:
+            suggestions = []
+            if provider == 'amazon_ses':
+                suggestions = [
+                    'Ensure you are using AWS SES SMTP credentials (not IAM credentials)',
+                    'Verify your AWS SES account is not in sandbox mode',
+                    'Check that your domain/email is verified in AWS SES'
+                ]
+            elif provider == 'gmail':
+                suggestions = [
+                    'Use an App Password instead of your regular password',
+                    'Enable 2-Factor Authentication first'
+                ]
+            elif provider == 'yahoo':
+                suggestions = [
+                    'Use an App Password instead of your regular password',
+                    'Enable 2-Factor Authentication first'
+                ]
+            else:
+                suggestions = ['Check your username and password']
+                
+            return {
+                'success': False,
+                'message': f'SMTP Authentication failed: {str(auth_error)}',
+                'error_type': 'auth_error',
+                'suggestions': suggestions
+            }
+            
+        except Exception as smtp_error:
+            return {
+                'success': False,
+                'message': f'SMTP Error: {str(smtp_error)}',
+                'error_type': 'smtp_error'
+            }
+        
+        finally:
+            if server:
+                try:
+                    server.quit()
+                except:
+                    pass
         
     except Exception as general_error:
-        logger.error(f"General SMTP validation error for {email}: {general_error}")
         return {
             'success': False,
-            'message': f'❌ Validation failed: {str(general_error)}',
+            'message': f'Validation failed: {str(general_error)}',
             'error_type': 'general_error'
         }
 
@@ -475,15 +416,14 @@ def get_setup_instructions(provider):
                 '1. Enable 2-Factor Authentication on your Google account',
                 '2. Go to Google Account settings > Security > App passwords',
                 '3. Generate an App Password for "Mail"',
-                '4. Use your Gmail address and the generated App Password (not your regular password)'
+                '4. Use your Gmail address and the generated App Password'
             ]
         },
         'outlook': {
             'title': 'Outlook Setup Instructions', 
             'steps': [
                 '1. Use your regular Outlook email and password',
-                '2. If 2FA is enabled, you may need to create an App Password',
-                '3. Check Microsoft account security settings if authentication fails'
+                '2. If 2FA is enabled, you may need to create an App Password'
             ]
         },
         'yahoo': {
@@ -491,8 +431,7 @@ def get_setup_instructions(provider):
             'steps': [
                 '1. Enable 2-Factor Authentication on your Yahoo account',
                 '2. Go to Yahoo Account Security settings',
-                '3. Generate an App Password for "Mail"',
-                '4. Use your Yahoo email and the generated App Password'
+                '3. Generate an App Password for "Mail"'
             ]
         },
         'amazon_ses': {
@@ -502,37 +441,28 @@ def get_setup_instructions(provider):
                 '2. Go to Account Dashboard > SMTP Settings',
                 '3. Click "Create SMTP Credentials"',
                 '4. Download the SMTP username and password (NOT your IAM credentials)',
-                '5. Verify your domain/email in SES if in sandbox mode',
-                '6. Use the SES SMTP endpoint for your region'
+                '5. Verify your domain/email in SES if in sandbox mode'
             ]
         },
         'custom': {
             'title': 'Custom SMTP Setup',
             'steps': [
                 '1. Get SMTP settings from your email provider',
-                '2. Enter the correct SMTP host and port',
-                '3. Use your email credentials or app-specific password'
+                '2. Enter the correct SMTP host and port'
             ]
         }
     }
-    
     return base_instructions.get(provider, base_instructions['custom'])
-
 # Routes
 @app.route('/')
 def index():
     return render_template('dashboard.html')
 
-# NEW: Check authentication status
 @app.route('/api/check-auth', methods=['GET'])
 def check_auth():
-    """Check if user is currently authenticated"""
     user = get_current_user()
     if user:
-        return jsonify({
-            'authenticated': True,
-            'user': user.to_dict()
-        })
+        return jsonify({'authenticated': True, 'user': user.to_dict()})
     else:
         return jsonify({'authenticated': False})
 
@@ -542,7 +472,7 @@ def login():
         data = request.get_json()
         email = data.get('email', '').lower().strip()
         password = data.get('password', '')
-        remember_me = data.get('remember_me', True)  # Default to True for persistence
+        remember_me = data.get('remember_me', True)
         
         if not email or not password:
             return jsonify({'success': False, 'message': 'Email and password are required'})
@@ -584,7 +514,6 @@ def register():
         db.session.add(user)
         db.session.commit()
         
-        # Auto-login new user with persistence
         return login_user_persistent(user, remember_me=True)
         
     except Exception as e:
@@ -758,9 +687,7 @@ def campaigns_api():
         db.session.rollback()
         return jsonify({'success': False, 'message': 'Campaign operation failed'})
 
-# Cleanup old tokens periodically
 def cleanup_expired_tokens():
-    """Remove expired login tokens"""
     try:
         expired_count = LoginToken.query.filter(
             LoginToken.expires_at < datetime.utcnow()
@@ -772,14 +699,10 @@ def cleanup_expired_tokens():
         logger.error(f"Token cleanup error: {e}")
         db.session.rollback()
 
-# Initialize database
 with app.app_context():
     db.create_all()
-    
-    # Cleanup expired tokens on startup
     cleanup_expired_tokens()
     
-    # Create demo user
     if not User.query.filter_by(email='demo@example.com').first():
         demo_user = User(username='demo', email='demo@example.com')
         demo_user.set_password('demo123')
