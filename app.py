@@ -28,7 +28,10 @@ import requests
 
 # Initialize Flask app
 app = Flask(__name__)
-
+@app.route('/health')
+def health():
+    return {'status': 'ok'}, 200
+    
 # Configuration
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///warmup.db')
