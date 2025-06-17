@@ -727,4 +727,184 @@ def forgot_password():
         else:
             return jsonify({
                 'success': True,
-                'message': 'If that email exists, password reset instructions have been
+                'message': 'If that email exists, password reset instructions have been sent'
+            })
+    except Exception as e:
+        return jsonify({'success': False, 'message': 'Request failed'})
+
+@app.route('/api/reset-password', methods=['POST'])
+def reset_password():
+    try:
+        data = request.get_json()
+        token = data.get('token', '')
+        new_password = data.get('password', '')
+        
+        if not token or not new_password:
+            return jsonify({'success': False, 'message': 'Token and new password are required'})
+        
+        if len(new_password) < 6:
+            return jsonify({'success': False, 'message': 'Password must be at least 6 characters'})
+        
+        user = User.query.filter_by(reset_token=token).first()
+        
+        if user and user.verify_reset_token(token):
+            user.set_password(new_password)
+            user.reset_token = None
+            user.reset_token_expires = None
+            db.session.commit()
+            
+            return jsonify({
+                'success': True,
+                'message': 'Password reset successfully! You can now login with your new password.'
+            })
+        else:
+            return jsonify({'success': False, 'message': 'Invalid or expired reset token'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': 'Reset failed'})
+
+@app.route('/api/logout', methods=['POST'])
+def logout():
+    return force_user_logout()
+
+@app.route('/api/detect-provider', methods=['POST'])
+def detect_provider():
+    try:
+        data = request.get_json()
+        email = data.get('email', '')
+        
+        provider = detect_email_provider(email)
+        config = SMTP_PROVIDERS.get(provider, SMTP_PROVIDERS['custom'])
+        
+        # IMPORTANT: Return ALL providers for frontend dropdown
+        return jsonify({
+            'provider': provider,
+            'config': config,
+            'all_providers': SMTP_PROVIDERS,
+            'setup_instructions': get_setup_instructions(provider)
+        })
+    except Exception as e:
+        return jsonify({'error': 'Provider detection failed'})
+
+@app.route('/api/test-smtp', methods=['POST'])
+def test_smtp():
+    try:
+        data = request.get_json()
+        
+        email = data.get('email', '')
+        password = data.get('password', '')
+        smtp_host = data.get('smtp_host', '')
+        smtp_port = int(data.get('smtp_port', 587))
+        smtp_username = data.get('smtp_username', email)
+        provider = data.get('provider', 'custom')
+        
+        if not all([email, password, smtp_host]):
+            return jsonify({
+                'success': False,
+                'message': 'Email, SMTP host, and password are required'
+            })
+        
+        result = validate_smtp_comprehensive(email, password, smtp_host, smtp_port, smtp_username, provider)
+        return jsonify(result)
+        
+    except Exception as e:
+        logger.error(f"SMTP test error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': f'SMTP test failed: {str(e)}'
+        })
+
+@app.route('/api/dashboard/stats')
+@require_auth
+def dashboard_stats():
+    try:
+        user = get_current_user()
+        campaigns = Campaign.query.filter_by(user_id=user.id).all()
+        
+        total_emails = sum(c.emails_sent for c in campaigns)
+        total_runs = sum(c.run_count for c in campaigns)
+        
+        stats = {
+            'active_campaigns': len([c for c in campaigns if c.status == 'active']),
+            'total_campaigns': len(campaigns),
+            'emails_sent_today': total_emails,
+            'total_runs': total_runs,
+            'avg_reputation_score': 85.5
+        }
+        
+        return jsonify(stats)
+    except Exception as e:
+        return jsonify({'error': 'Failed to load stats'})
+
+@app.route('/api/campaigns', methods=['GET', 'POST'])
+@require_auth
+def campaigns_api():
+    user = get_current_user()
+    
+    try:
+        if request.method == 'POST':
+            data = request.get_json()
+            
+            required_fields = ['name', 'email', 'smtp_host', 'smtp_password']
+            for field in required_fields:
+                if not data.get(field):
+                    return jsonify({'success': False, 'message': f'{field} is required'})
+            
+            campaign = Campaign(
+                name=data.get('name'),
+                email_address=data.get('email'),
+                smtp_host=clean_smtp_host(data.get('smtp_host')),
+                smtp_port=data.get('smtp_port', 587),
+                smtp_username=data.get('smtp_username', data.get('email')),
+                smtp_password=data.get('smtp_password'),
+                provider=data.get('provider', 'custom'),
+                user_id=user.id
+            )
+            
+            db.session.add(campaign)
+            db.session.commit()
+            
+            logger.info(f"Campaign saved: {campaign.name} for user: {user.username}")
+            
+            return jsonify({
+                'success': True, 
+                'message': 'Campaign created successfully', 
+                'campaign': campaign.to_dict()
+            })
+        
+        else:
+            campaigns = Campaign.query.filter_by(user_id=user.id).all()
+            return jsonify([c.to_dict() for c in campaigns])
+            
+    except Exception as e:
+        logger.error(f"Campaign error: {e}")
+        db.session.rollback()
+        return jsonify({'success': False, 'message': 'Campaign operation failed'})
+
+def cleanup_expired_tokens():
+    try:
+        expired_count = LoginToken.query.filter(
+            LoginToken.expires_at < datetime.utcnow()
+        ).delete()
+        db.session.commit()
+        if expired_count > 0:
+            logger.info(f"Cleaned up {expired_count} expired login tokens")
+    except Exception as e:
+        logger.error(f"Token cleanup error: {e}")
+        db.session.rollback()
+
+with app.app_context():
+    db.create_all()
+    cleanup_expired_tokens()
+    
+    if not User.query.filter_by(email='demo@example.com').first():
+        demo_user = User(username='demo', email='demo@example.com')
+        demo_user.set_password('demo123')
+        demo_user.auto_login = True
+        db.session.add(demo_user)
+        db.session.commit()
+        logger.info("Demo user created: demo@example.com / demo123")
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host='0.0.0.0', port=port, debug=False)
+
