@@ -161,7 +161,7 @@ class EmailWarmupDashboard {
         };
     }
 
-    // CORRECTED: Enhanced provider change handler with SES support
+    // CORRECTED: Enhanced provider change handler with SES support (FIXED)
     handleProviderChange(provider) {
         const config = this.providerConfigs[provider];
         const helpDiv = document.getElementById('provider-help');
@@ -171,26 +171,28 @@ class EmailWarmupDashboard {
 
         // Show/hide custom fields
         if (provider === 'custom_smtp' || provider === 'custom_ses') {
-            customFields.style.display = 'block';
+            if (customFields) customFields.style.display = 'block';
         } else {
-            customFields.style.display = 'none';
+            if (customFields) customFields.style.display = 'none';
         }
 
         // Update field labels for SES
         if (this.isAmazonSES(provider)) {
-            usernameLabel.textContent = 'IAM Access Key ID';
-            passwordLabel.textContent = 'IAM Secret Access Key';
+            if (usernameLabel) usernameLabel.textContent = 'IAM Access Key ID';
+            if (passwordLabel) passwordLabel.textContent = 'IAM Secret Access Key';
         } else {
-            usernameLabel.textContent = 'SMTP Username';
-            passwordLabel.textContent = 'SMTP Password';
+            if (usernameLabel) usernameLabel.textContent = 'SMTP Username';
+            if (passwordLabel) passwordLabel.textContent = 'SMTP Password';
         }
 
-        // Show provider help
-        if (config && config.helpText) {
-            helpDiv.innerHTML = `${config.helpText}`;
-            helpDiv.classList.remove('hidden');
-        } else {
-            helpDiv.classList.add('hidden');
+        // Show provider help (FIXED)
+        if (config && config.helpText && helpDiv) {
+            helpDiv.innerHTML = `<i class="fas fa-info-circle text-blue-500 mr-2"></i>${config.helpText}`;
+            helpDiv.classList.add('show');
+            helpDiv.style.display = 'block';
+        } else if (helpDiv) {
+            helpDiv.classList.remove('show');
+            helpDiv.style.display = 'none';
         }
 
         // Set default values
@@ -215,22 +217,35 @@ class EmailWarmupDashboard {
         fetch(`${this.apiBaseUrl}/campaigns`)
             .then(response => response.json())
             .then(data => {
-                if (data.success) {
+                if (Array.isArray(data)) {
+                    this.campaigns = data;
+                } else if (data.campaigns && Array.isArray(data.campaigns)) {
                     this.campaigns = data.campaigns;
-                    this.renderCampaigns();
+                } else {
+                    this.campaigns = [];
                 }
+                this.renderCampaigns();
             })
-            .catch(error => console.error('Error loading campaigns:', error));
+            .catch(error => {
+                console.error('Error loading campaigns:', error);
+                this.campaigns = [];
+                this.renderCampaigns();
+            });
     }
 
     renderCampaigns() {
         const container = document.getElementById('campaigns-container');
+        if (!container) return;
+
         if (this.campaigns.length === 0) {
             container.innerHTML = `
-                
-                    
-                    No campaigns yet. Create your first campaign to get started!
-                
+                <div class="text-center py-12 text-gray-500">
+                    <i class="fas fa-inbox text-4xl mb-4"></i>
+                    <p class="text-lg">No campaigns yet. Create your first campaign to get started!</p>
+                    <button onclick="switchTab('create')" class="mt-4 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+                        Create Campaign
+                    </button>
+                </div>
             `;
         } else {
             // Render existing campaigns
@@ -240,23 +255,23 @@ class EmailWarmupDashboard {
 
     renderCampaignCard(campaign) {
         return `
-            
-                
-                    
-                        ${campaign.name}
-                        ${campaign.email}
-                        ${campaign.provider}
-                    
-                    
-                        
+            <div class="bg-white p-6 rounded-lg shadow-lg mb-4">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h3 class="text-lg font-medium text-gray-900">${campaign.name}</h3>
+                        <p class="text-sm text-gray-600">${campaign.email}</p>
+                        <p class="text-sm text-gray-500">${campaign.provider}</p>
+                    </div>
+                    <div class="flex space-x-2">
+                        <button onclick="dashboard.startCampaign(${campaign.id})" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors">
                             Start
-                        
-                        
+                        </button>
+                        <button onclick="dashboard.deleteCampaign(${campaign.id})" class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors">
                             Delete
-                        
-                    
-                
-            
+                        </button>
+                    </div>
+                </div>
+            </div>
         `;
     }
 
@@ -269,7 +284,7 @@ class EmailWarmupDashboard {
 
         const submitBtn = document.querySelector('button[onclick="testConnection()"]');
         const originalText = submitBtn.innerHTML;
-        submitBtn.innerHTML = 'Testing...';
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Testing...';
         submitBtn.disabled = true;
 
         try {
@@ -277,7 +292,6 @@ class EmailWarmupDashboard {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-CSRFToken': this.getCSRFToken()
                 },
                 body: JSON.stringify(formData)
             });
@@ -327,14 +341,17 @@ class EmailWarmupDashboard {
     // Existing form handling methods (Preserved)
     getFormData() {
         return {
-            name: document.getElementById('campaign-name').value,
-            email: document.getElementById('email-address').value,
-            provider: document.getElementById('email-provider').value,
-            username: document.getElementById('smtp-username').value,
-            password: document.getElementById('smtp-password').value,
+            name: document.getElementById('campaign-name')?.value || '',
+            email: document.getElementById('email-address')?.value || '',
+            provider: document.getElementById('email-provider')?.value || '',
+            username: document.getElementById('smtp-username')?.value || '',
+            password: document.getElementById('smtp-password')?.value || '',
             smtp_host: document.getElementById('smtp-host')?.value || '',
             smtp_port: document.getElementById('smtp-port')?.value || 587,
-            use_tls: document.getElementById('use-tls')?.checked || true
+            use_tls: document.getElementById('use-tls')?.checked || true,
+            industry: document.getElementById('industry')?.value || '',
+            daily_volume: document.getElementById('daily-volume')?.value || 10,
+            warmup_days: document.getElementById('warmup-days')?.value || 30
         };
     }
 
@@ -365,7 +382,7 @@ class EmailWarmupDashboard {
             return false;
         }
 
-        if (data.provider === 'custom_ses' && !data.smtp_host.includes('amazonaws.com')) {
+        if (data.provider === 'custom_ses' && data.smtp_host && !data.smtp_host.includes('amazonaws.com')) {
             this.showNotification('Custom SES host should be an AWS SES endpoint (*.amazonaws.com).', 'warning');
         }
 
@@ -386,7 +403,6 @@ class EmailWarmupDashboard {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-CSRFToken': this.getCSRFToken()
                 },
                 body: JSON.stringify(formData)
             });
@@ -395,8 +411,10 @@ class EmailWarmupDashboard {
             
             if (result.success) {
                 this.showNotification('Campaign created successfully!', 'success');
-                this.closeCampaignModal();
+                document.getElementById('campaign-form').reset();
                 this.loadCampaigns();
+                // Switch to campaigns tab
+                switchTab('campaigns');
             } else {
                 this.showNotification(`Failed to create campaign: ${result.message}`, 'error');
             }
@@ -405,23 +423,11 @@ class EmailWarmupDashboard {
         }
     }
 
-    // Existing utility methods (Preserved)
-    openCampaignModal() {
-        document.getElementById('campaign-modal').classList.remove('hidden');
-    }
-
-    closeCampaignModal() {
-        document.getElementById('campaign-modal').classList.add('hidden');
-        document.getElementById('campaign-form').reset();
-        document.getElementById('provider-help').classList.add('hidden');
-        document.getElementById('custom-smtp-fields').style.display = 'none';
-    }
-
     startCampaign(campaignId) {
         fetch(`${this.apiBaseUrl}/campaigns/${campaignId}/start`, {
             method: 'POST',
             headers: {
-                'X-CSRFToken': this.getCSRFToken()
+                'Content-Type': 'application/json'
             }
         })
         .then(response => response.json())
@@ -432,6 +438,9 @@ class EmailWarmupDashboard {
             } else {
                 this.showNotification(`Failed to start campaign: ${data.message}`, 'error');
             }
+        })
+        .catch(error => {
+            this.showNotification('Error starting campaign.', 'error');
         });
     }
 
@@ -440,7 +449,7 @@ class EmailWarmupDashboard {
             fetch(`${this.apiBaseUrl}/campaigns/${campaignId}`, {
                 method: 'DELETE',
                 headers: {
-                    'X-CSRFToken': this.getCSRFToken()
+                    'Content-Type': 'application/json'
                 }
             })
             .then(response => response.json())
@@ -451,6 +460,9 @@ class EmailWarmupDashboard {
                 } else {
                     this.showNotification(`Failed to delete campaign: ${data.message}`, 'error');
                 }
+            })
+            .catch(error => {
+                this.showNotification('Error deleting campaign.', 'error');
             });
         }
     }
@@ -460,10 +472,10 @@ class EmailWarmupDashboard {
         const notification = document.createElement('div');
         notification.className = `fixed top-4 right-4 px-6 py-3 rounded-lg shadow-lg z-50 ${this.getNotificationClasses(type)}`;
         notification.innerHTML = `
-            
-                
+            <div class="flex items-center">
+                <i class="fas ${this.getNotificationIcon(type)} mr-2"></i>
                 ${message}
-            
+            </div>
         `;
         
         document.body.appendChild(notification);
@@ -494,34 +506,43 @@ class EmailWarmupDashboard {
         return icons[type] || icons.info;
     }
 
-    getCSRFToken() {
-        const token = document.querySelector('meta[name="csrf-token"]');
-        return token ? token.getAttribute('content') : '';
-    }
-
     logout() {
-        fetch('/api/auth/logout', {
-            method: 'POST',
-            headers: {
-                'X-CSRFToken': this.getCSRFToken()
-            }
+        fetch('/logout', {
+            method: 'GET'
         })
         .then(() => {
+            window.location.href = '/login';
+        })
+        .catch(() => {
             window.location.href = '/login';
         });
     }
 }
 
 // Global functions (Preserved)
-function openCampaignModal() {
-    if (window.dashboard) {
-        window.dashboard.openCampaignModal();
-    }
-}
+function switchTab(tabName) {
+    // Hide all tab contents
+    const tabContents = document.querySelectorAll('.tab-content');
+    tabContents.forEach(tab => {
+        tab.classList.remove('active');
+    });
 
-function closeCampaignModal() {
-    if (window.dashboard) {
-        window.dashboard.closeCampaignModal();
+    // Remove active class from all tab buttons
+    const tabButtons = document.querySelectorAll('.tab-button');
+    tabButtons.forEach(button => {
+        button.classList.remove('active');
+    });
+
+    // Show selected tab content
+    const selectedTab = document.getElementById(`${tabName}-tab`);
+    if (selectedTab) {
+        selectedTab.classList.add('active');
+    }
+
+    // Add active class to selected tab button
+    const selectedButton = document.querySelector(`[onclick="switchTab('${tabName}')"]`);
+    if (selectedButton) {
+        selectedButton.classList.add('active');
     }
 }
 
