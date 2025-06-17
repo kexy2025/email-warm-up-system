@@ -299,16 +299,64 @@
                             <!-- Email Provider Configuration -->
                             <div class="space-y-4">
                                 <h3 class="text-md font-medium text-gray-900 border-b pb-2">Email Provider</h3>
-<select id="email-provider" name="provider" 
+    <select id="email-provider" name="provider" onchange="handleProviderChange(this.value)"
         class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
     <option value="">Select Email Provider</option>
     <option value="gmail">Gmail</option>
     <option value="outlook">Outlook/Hotmail</option>
     <option value="yahoo">Yahoo Mail</option>
-    <option value="amazon_ses">Amazon SES</option>
+    <option value="amazon_ses_us_east_1">Amazon SES (US East 1)</option>
+    <option value="amazon_ses_us_west_2">Amazon SES (US West 2)</option>
+    <option value="amazon_ses_eu_west_1">Amazon SES (EU West 1)</option>
     <option value="custom_smtp">Custom SMTP</option>
-</select>
-                                    <!-- Provider Help Text -->
+
+    <!-- Email Provider Configuration -->
+<div class="space-y-4">
+    <h3 class="text-md font-medium text-gray-900 border-b pb-2">Email Provider</h3>
+
+    <div>
+        <label for="email-provider" class="block text-sm font-medium text-gray-700">Email Provider</label>
+        <select id="email-provider" name="provider" onchange="handleProviderChange(this.value)"
+                class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+            <!-- Your provider options -->
+        </select>
+
+        <!-- Provider Help Text -->
+        <div id="provider-help" class="provider-help">
+            <!-- Dynamic help content will be inserted here -->
+        </div>
+    </div>
+
+    <div class="grid grid-cols-2 gap-4">
+        <!-- Username and Password fields -->
+    </div>
+
+    <!-- INSERT THE CUSTOM SMTP FIELDS CODE RIGHT HERE -->
+    <!-- Custom SMTP Fields -->
+    <div id="custom-smtp-fields" style="display: none;">
+        <div class="grid grid-cols-3 gap-4">
+            <div class="col-span-2">
+                <label for="smtp-host" class="block text-sm font-medium text-gray-700">SMTP Host</label>
+                <input type="text" id="smtp-host" name="smtp_host"
+                       class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                       placeholder="smtp.example.com">
+            </div>
+            <div>
+                <label for="smtp-port" class="block text-sm font-medium text-gray-700">Port</label>
+                <input type="number" id="smtp-port" name="smtp_port" value="587"
+                       class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+            </div>
+        </div>
+        <div class="flex items-center mt-2">
+            <input type="checkbox" id="use-tls" name="use_tls" checked
+                   class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
+            <label for="use-tls" class="ml-2 block text-sm text-gray-900">Use TLS</label>
+        </div>
+    </div>
+</div>
+    </select>
+
+                                 <!-- Provider Help Text -->
                                     <div id="provider-help" class="provider-help">
                                         <!-- Dynamic help content will be inserted here -->
                                     </div>
