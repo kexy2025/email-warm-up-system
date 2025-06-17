@@ -302,19 +302,25 @@
 
                                 <div>
                                     <label for="email-provider" class="block text-sm font-medium text-gray-700">Email Provider</label>
-                                    <select id="email-provider" name="provider" required>
-    <option value="">Select Email Provider</option>
-    <option value="gmail">Gmail</option>
-    <option value="outlook">Outlook/Hotmail</option>
-    <option value="yahoo">Yahoo Mail</option>
-    <option value="amazon_ses_us_east_1">Amazon SES (US East 1)</option>
-    <option value="amazon_ses_us_west_2">Amazon SES (US West 2)</option>
-    <option value="amazon_ses_eu_west_1">Amazon SES (EU West 1)</option>
-    <option value="amazon_ses_ap_southeast_1">Amazon SES (Asia Pacific)</option>
-    <option value="custom_ses">Amazon SES (Custom Region)</option>
-    <option value="custom_smtp">Custom SMTP</option>
-</select>
-
+                                    <select id="email-provider" name="provider" required 
+                                            class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                                            onchange="handleProviderChange(this.value)">
+                                        <option value="">Select Email Provider</option>
+                                        <option value="gmail">Gmail</option>
+                                        <option value="outlook">Outlook/Hotmail</option>
+                                        <option value="yahoo">Yahoo Mail</option>
+                                        <option value="amazon_ses_us_east_1">Amazon SES (US East 1)</option>
+                                        <option value="amazon_ses_us_west_2">Amazon SES (US West 2)</option>
+                                        <option value="amazon_ses_us_west_1">Amazon SES (US West 1)</option>
+                                        <option value="amazon_ses_eu_west_1">Amazon SES (EU West 1)</option>
+                                        <option value="amazon_ses_eu_central_1">Amazon SES (EU Central 1)</option>
+                                        <option value="amazon_ses_ap_southeast_1">Amazon SES (Asia Pacific - Singapore)</option>
+                                        <option value="amazon_ses_ap_southeast_2">Amazon SES (Asia Pacific - Sydney)</option>
+                                        <option value="amazon_ses_ap_northeast_1">Amazon SES (Asia Pacific - Tokyo)</option>
+                                        <option value="amazon_ses_ca_central_1">Amazon SES (Canada Central)</option>
+                                        <option value="custom_ses">Amazon SES (Custom Region)</option>
+                                        <option value="custom_smtp">Custom SMTP</option>
+                                    </select>
                                     
                                     <!-- Provider Help Text -->
                                     <div id="provider-help" class="provider-help">
