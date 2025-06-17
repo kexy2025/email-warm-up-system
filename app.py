@@ -2,6 +2,7 @@
 """
 KEXY Email Warmup System - Complete Application
 Includes authentication, database persistence, and Amazon SES support
+FIXED: Removed login requirements from API routes for Railway deployment
 """
 
 import os
@@ -28,10 +29,7 @@ import requests
 
 # Initialize Flask app
 app = Flask(__name__)
-@app.route('/health')
-def health():
-    return {'status': 'ok'}, 200
-    
+
 # Configuration
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///warmup.db')
@@ -346,8 +344,12 @@ def create_default_user():
 # Routes
 @app.route('/')
 def index():
-    return render_template('dashboard.html')  # <-- SIMPLE FIX: Just go straight to dashboard
-    
+    # FIXED: Auto-login for testing purposes
+    admin_user = User.query.first()
+    if admin_user and not current_user.is_authenticated:
+        login_user(admin_user)
+    return render_template('dashboard.html')
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -418,9 +420,8 @@ def logout():
 def dashboard():
     return render_template('dashboard.html')
 
-# API Routes
+# API Routes - FIXED: Removed @login_required decorators
 @app.route('/api/validate-smtp', methods=['POST'])
-@login_required
 def validate_smtp():
     try:
         data = request.get_json()
@@ -446,11 +447,23 @@ def validate_smtp():
         return jsonify({'success': False, 'message': 'Validation failed'}), 500
 
 @app.route('/api/campaigns', methods=['GET', 'POST'])
-@login_required
 def campaigns():
     if request.method == 'GET':
-        user_campaigns = Campaign.query.filter_by(user_id=current_user.id).all()
-        return jsonify([campaign.to_dict() for campaign in user_campaigns])
+        # FIXED: Get all campaigns or default to admin user's campaigns
+        try:
+            if current_user.is_authenticated:
+                user_campaigns = Campaign.query.filter_by(user_id=current_user.id).all()
+            else:
+                # Get admin user's campaigns as default
+                admin_user = User.query.first()
+                if admin_user:
+                    user_campaigns = Campaign.query.filter_by(user_id=admin_user.id).all()
+                else:
+                    user_campaigns = []
+            return jsonify([campaign.to_dict() for campaign in user_campaigns])
+        except Exception as e:
+            logger.error(f"Campaigns GET error: {str(e)}")
+            return jsonify([])
 
     elif request.method == 'POST':
         try:
@@ -480,6 +493,14 @@ def campaigns():
             if not success:
                 return jsonify({'success': False, 'message': f'SMTP validation failed: {message}'}), 400
 
+            # FIXED: Get user_id properly
+            if current_user.is_authenticated:
+                user_id = current_user.id
+            else:
+                # Use admin user as default
+                admin_user = User.query.first()
+                user_id = admin_user.id if admin_user else 1
+
             # Create campaign
             campaign = Campaign(
                 name=data['name'],
@@ -492,7 +513,7 @@ def campaigns():
                 industry=data['industry'],
                 daily_volume=data.get('daily_volume', 10),
                 warmup_days=data.get('warmup_days', 30),
-                user_id=current_user.id
+                user_id=user_id
             )
 
             # Encrypt password
@@ -501,7 +522,7 @@ def campaigns():
             db.session.add(campaign)
             db.session.commit()
 
-            logger.info(f"Campaign created: {campaign.name} for user {current_user.username}")
+            logger.info(f"Campaign created: {campaign.name}")
             return jsonify({'success': True, 'message': 'Campaign created successfully', 'campaign': campaign.to_dict()})
 
         except Exception as e:
@@ -509,10 +530,14 @@ def campaigns():
             db.session.rollback()
             return jsonify({'success': False, 'message': 'Failed to create campaign'}), 500
 
-@app.route('/api/campaigns/<int:campaign_id>', methods=['GET', 'PUT', 'DELETE'])
-@login_required
+@app.route('/api/campaigns/', methods=['GET', 'PUT', 'DELETE'])
 def campaign_detail(campaign_id):
-    campaign = Campaign.query.filter_by(id=campaign_id, user_id=current_user.id).first()
+    # FIXED: Handle campaign access without strict user filtering
+    if current_user.is_authenticated:
+        campaign = Campaign.query.filter_by(id=campaign_id, user_id=current_user.id).first()
+    else:
+        campaign = Campaign.query.get(campaign_id)
+    
     if not campaign:
         return jsonify({'error': 'Campaign not found'}), 404
 
@@ -550,10 +575,14 @@ def campaign_detail(campaign_id):
             db.session.rollback()
             return jsonify({'success': False, 'message': 'Failed to delete campaign'}), 500
 
-@app.route('/api/campaigns/<int:campaign_id>/start', methods=['POST'])
-@login_required
+@app.route('/api/campaigns//start', methods=['POST'])
 def start_campaign(campaign_id):
-    campaign = Campaign.query.filter_by(id=campaign_id, user_id=current_user.id).first()
+    # FIXED: Handle campaign access without strict user filtering
+    if current_user.is_authenticated:
+        campaign = Campaign.query.filter_by(id=campaign_id, user_id=current_user.id).first()
+    else:
+        campaign = Campaign.query.get(campaign_id)
+    
     if not campaign:
         return jsonify({'error': 'Campaign not found'}), 404
 
@@ -570,10 +599,14 @@ def start_campaign(campaign_id):
         db.session.rollback()
         return jsonify({'success': False, 'message': 'Failed to start campaign'}), 500
 
-@app.route('/api/campaigns/<int:campaign_id>/pause', methods=['POST'])
-@login_required
+@app.route('/api/campaigns//pause', methods=['POST'])
 def pause_campaign(campaign_id):
-    campaign = Campaign.query.filter_by(id=campaign_id, user_id=current_user.id).first()
+    # FIXED: Handle campaign access without strict user filtering
+    if current_user.is_authenticated:
+        campaign = Campaign.query.filter_by(id=campaign_id, user_id=current_user.id).first()
+    else:
+        campaign = Campaign.query.get(campaign_id)
+    
     if not campaign:
         return jsonify({'error': 'Campaign not found'}), 404
 
@@ -590,10 +623,18 @@ def pause_campaign(campaign_id):
         return jsonify({'success': False, 'message': 'Failed to pause campaign'}), 500
 
 @app.route('/api/dashboard-stats')
-@login_required
 def dashboard_stats():
     try:
-        user_campaigns = Campaign.query.filter_by(user_id=current_user.id).all()
+        # FIXED: Get campaigns properly based on authentication state
+        if current_user.is_authenticated:
+            user_campaigns = Campaign.query.filter_by(user_id=current_user.id).all()
+        else:
+            # Get admin user's campaigns as default
+            admin_user = User.query.first()
+            if admin_user:
+                user_campaigns = Campaign.query.filter_by(user_id=admin_user.id).all()
+            else:
+                user_campaigns = []
         
         total_campaigns = len(user_campaigns)
         active_campaigns = len([c for c in user_campaigns if c.status == 'active'])
