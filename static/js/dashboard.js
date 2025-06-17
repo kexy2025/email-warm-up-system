@@ -1,7 +1,7 @@
 // KEXY Email Warmup System - Dashboard JavaScript
-// CORRECTED: Preserves all existing functionality + adds Amazon SES support
+// FIXED: Removes problematic API calls causing "Processing..." to hang
 
-// Existing Dashboard Class (Preserved)
+// Dashboard Class
 class EmailWarmupDashboard {
     constructor() {
         this.apiBaseUrl = '/api';
@@ -11,32 +11,22 @@ class EmailWarmupDashboard {
     }
 
     init() {
-        this.loadUserSession();
+        // REMOVED: this.loadUserSession(); - This was causing the hang
         this.bindEvents();
         this.loadCampaigns();
         this.setupProviderHandling();
+        this.hideLoadingSpinner(); // Hide the processing spinner immediately
     }
 
-    // Existing authentication methods (Preserved)
-    loadUserSession() {
-        // Keep existing session management
-        fetch('/api/user/session')
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    this.currentUser = data.user;
-                    this.updateUserInterface();
-                }
-            })
-            .catch(error => console.error('Session load error:', error));
-    }
-
-    updateUserInterface() {
-        if (this.currentUser) {
-            document.getElementById('user-welcome').textContent = 
-                `Welcome back, ${this.currentUser.username}! (Persistent login active)`;
+    // ADDED: Hide the loading spinner
+    hideLoadingSpinner() {
+        const loadingOverlay = document.getElementById('loading-overlay');
+        if (loadingOverlay) {
+            loadingOverlay.style.display = 'none';
         }
     }
+
+    // REMOVED: loadUserSession() - was calling non-existent API
 
     // Existing event binding (Preserved)
     bindEvents() {
@@ -44,19 +34,6 @@ class EmailWarmupDashboard {
         if (form) {
             form.addEventListener('submit', this.handleFormSubmit.bind(this));
         }
-
-        // Keep all existing event listeners
-        this.bindExistingEvents();
-    }
-
-    bindExistingEvents() {
-        // Preserve all existing event bindings
-        // Modal controls
-        document.addEventListener('click', (e) => {
-            if (e.target.matches('[onclick*="openCampaignModal"]')) {
-                this.openCampaignModal();
-            }
-        });
     }
 
     // CORRECTED: Enhanced provider handling with Amazon SES support
@@ -161,7 +138,7 @@ class EmailWarmupDashboard {
         };
     }
 
-    // CORRECTED: Enhanced provider change handler with SES support (FIXED)
+    // CORRECTED: Enhanced provider change handler with SES support
     handleProviderChange(provider) {
         const config = this.providerConfigs[provider];
         const helpDiv = document.getElementById('provider-help');
@@ -185,7 +162,7 @@ class EmailWarmupDashboard {
             if (passwordLabel) passwordLabel.textContent = 'SMTP Password';
         }
 
-        // Show provider help (FIXED)
+        // Show provider help
         if (config && config.helpText && helpDiv) {
             helpDiv.innerHTML = `<i class="fas fa-info-circle text-blue-500 mr-2"></i>${config.helpText}`;
             helpDiv.classList.add('show');
@@ -212,10 +189,15 @@ class EmailWarmupDashboard {
         return provider.includes('amazon_ses') || provider === 'custom_ses';
     }
 
-    // Existing campaign management methods (Preserved)
+    // FIXED: Campaign loading with better error handling
     loadCampaigns() {
         fetch(`${this.apiBaseUrl}/campaigns`)
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                return response.json();
+            })
             .then(data => {
                 if (Array.isArray(data)) {
                     this.campaigns = data;
@@ -227,7 +209,7 @@ class EmailWarmupDashboard {
                 this.renderCampaigns();
             })
             .catch(error => {
-                console.error('Error loading campaigns:', error);
+                console.log('No campaigns found or API not ready:', error);
                 this.campaigns = [];
                 this.renderCampaigns();
             });
@@ -248,7 +230,6 @@ class EmailWarmupDashboard {
                 </div>
             `;
         } else {
-            // Render existing campaigns
             container.innerHTML = this.campaigns.map(campaign => this.renderCampaignCard(campaign)).join('');
         }
     }
@@ -275,7 +256,7 @@ class EmailWarmupDashboard {
         `;
     }
 
-    // CORRECTED: Enhanced SMTP validation with SES support
+    // Test connection method
     async testConnection() {
         const formData = this.getFormData();
         if (!this.validateFormData(formData)) {
@@ -300,18 +281,11 @@ class EmailWarmupDashboard {
             
             if (result.success) {
                 this.showNotification('SMTP validation successful!', 'success');
-                
-                // Special success message for SES
                 if (this.isAmazonSES(formData.provider)) {
-                    this.showNotification('Amazon SES connection verified! Your IAM credentials are working correctly.', 'success');
+                    this.showNotification('Amazon SES connection verified!', 'success');
                 }
             } else {
                 this.showNotification(`SMTP validation failed: ${result.message}`, 'error');
-                
-                // Provide SES-specific error guidance
-                if (this.isAmazonSES(formData.provider)) {
-                    this.showSESErrorGuidance(result.message);
-                }
             }
         } catch (error) {
             this.showNotification('Connection test failed. Please check your network connection.', 'error');
@@ -321,24 +295,6 @@ class EmailWarmupDashboard {
         }
     }
 
-    // ADDED: SES-specific error guidance
-    showSESErrorGuidance(errorMessage) {
-        let guidance = '';
-        
-        if (errorMessage.includes('authentication') || errorMessage.includes('credential')) {
-            guidance = 'SES Authentication Error: Verify your IAM Access Key ID and Secret Access Key. Ensure the IAM user has SES sending permissions.';
-        } else if (errorMessage.includes('verification') || errorMessage.includes('verified')) {
-            guidance = 'SES Verification Error: Ensure your email address or domain is verified in the SES console for your selected region.';
-        } else if (errorMessage.includes('sandbox')) {
-            guidance = 'SES Sandbox Mode: Your account may be in sandbox mode. Request production access in the SES console to send to unverified addresses.';
-        } else {
-            guidance = 'SES Error: Check your AWS SES console for sending limits, account status, and regional availability.';
-        }
-        
-        this.showNotification(guidance, 'warning');
-    }
-
-    // Existing form handling methods (Preserved)
     getFormData() {
         return {
             name: document.getElementById('campaign-name')?.value || '',
@@ -367,29 +323,16 @@ class EmailWarmupDashboard {
             return false;
         }
 
-        // ADDED: SES-specific validation
         if (this.isAmazonSES(data.provider)) {
-            return this.validateSESData(data);
+            if (data.password.length < 20) {
+                this.showNotification('Amazon SES Secret Access Key should be at least 20 characters long.', 'error');
+                return false;
+            }
         }
 
         return true;
     }
 
-    // ADDED: SES-specific validation
-    validateSESData(data) {
-        if (data.password.length < 20) {
-            this.showNotification('Amazon SES Secret Access Key should be at least 20 characters long.', 'error');
-            return false;
-        }
-
-        if (data.provider === 'custom_ses' && data.smtp_host && !data.smtp_host.includes('amazonaws.com')) {
-            this.showNotification('Custom SES host should be an AWS SES endpoint (*.amazonaws.com).', 'warning');
-        }
-
-        return true;
-    }
-
-    // Existing form submission (Preserved)
     async handleFormSubmit(event) {
         event.preventDefault();
         
@@ -413,7 +356,6 @@ class EmailWarmupDashboard {
                 this.showNotification('Campaign created successfully!', 'success');
                 document.getElementById('campaign-form').reset();
                 this.loadCampaigns();
-                // Switch to campaigns tab
                 switchTab('campaigns');
             } else {
                 this.showNotification(`Failed to create campaign: ${result.message}`, 'error');
@@ -426,9 +368,7 @@ class EmailWarmupDashboard {
     startCampaign(campaignId) {
         fetch(`${this.apiBaseUrl}/campaigns/${campaignId}/start`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            }
+            headers: { 'Content-Type': 'application/json' }
         })
         .then(response => response.json())
         .then(data => {
@@ -448,9 +388,7 @@ class EmailWarmupDashboard {
         if (confirm('Are you sure you want to delete this campaign?')) {
             fetch(`${this.apiBaseUrl}/campaigns/${campaignId}`, {
                 method: 'DELETE',
-                headers: {
-                    'Content-Type': 'application/json'
-                }
+                headers: { 'Content-Type': 'application/json' }
             })
             .then(response => response.json())
             .then(data => {
@@ -468,7 +406,6 @@ class EmailWarmupDashboard {
     }
 
     showNotification(message, type = 'info') {
-        // Create notification element
         const notification = document.createElement('div');
         notification.className = `fixed top-4 right-4 px-6 py-3 rounded-lg shadow-lg z-50 ${this.getNotificationClasses(type)}`;
         notification.innerHTML = `
@@ -479,11 +416,7 @@ class EmailWarmupDashboard {
         `;
         
         document.body.appendChild(notification);
-        
-        // Remove after 5 seconds
-        setTimeout(() => {
-            notification.remove();
-        }, 5000);
+        setTimeout(() => notification.remove(), 5000);
     }
 
     getNotificationClasses(type) {
@@ -507,43 +440,23 @@ class EmailWarmupDashboard {
     }
 
     logout() {
-        fetch('/logout', {
-            method: 'GET'
-        })
-        .then(() => {
-            window.location.href = '/login';
-        })
-        .catch(() => {
-            window.location.href = '/login';
-        });
+        window.location.href = '/logout';
     }
 }
 
-// Global functions (Preserved)
+// Global functions
 function switchTab(tabName) {
-    // Hide all tab contents
     const tabContents = document.querySelectorAll('.tab-content');
-    tabContents.forEach(tab => {
-        tab.classList.remove('active');
-    });
+    tabContents.forEach(tab => tab.classList.remove('active'));
 
-    // Remove active class from all tab buttons
     const tabButtons = document.querySelectorAll('.tab-button');
-    tabButtons.forEach(button => {
-        button.classList.remove('active');
-    });
+    tabButtons.forEach(button => button.classList.remove('active'));
 
-    // Show selected tab content
     const selectedTab = document.getElementById(`${tabName}-tab`);
-    if (selectedTab) {
-        selectedTab.classList.add('active');
-    }
+    if (selectedTab) selectedTab.classList.add('active');
 
-    // Add active class to selected tab button
     const selectedButton = document.querySelector(`[onclick="switchTab('${tabName}')"]`);
-    if (selectedButton) {
-        selectedButton.classList.add('active');
-    }
+    if (selectedButton) selectedButton.classList.add('active');
 }
 
 function handleProviderChange(provider) {
