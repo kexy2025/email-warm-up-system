@@ -299,18 +299,15 @@
                             <!-- Email Provider Configuration -->
                             <div class="space-y-4">
                                 <h3 class="text-md font-medium text-gray-900 border-b pb-2">Email Provider</h3>
-
-                                <div>
-                                    <label for="email-provider" class="block text-sm font-medium text-gray-700">Email Provider</label>
-                                    <select id="email-provider" name="provider">
-                                    <option value="">Select Email Provider</option>
-                                    <option value="gmail">Gmail</option>
-                                    <option value="outlook">Outlook/Hotmail</option>
-                                    <option value="yahoo">Yahoo Mail</option>
-                                    <option value="amazon_ses">Amazon SES</option>
-                                    <option value="custom_smtp">Custom SMTP</option>
-                                    </select>
-
+<select id="email-provider" name="provider" 
+        class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+    <option value="">Select Email Provider</option>
+    <option value="gmail">Gmail</option>
+    <option value="outlook">Outlook/Hotmail</option>
+    <option value="yahoo">Yahoo Mail</option>
+    <option value="amazon_ses">Amazon SES</option>
+    <option value="custom_smtp">Custom SMTP</option>
+</select>
                                     <!-- Provider Help Text -->
                                     <div id="provider-help" class="provider-help">
                                         <!-- Dynamic help content will be inserted here -->
