@@ -30,7 +30,6 @@ app.config['SESSION_PERMANENT'] = True
 db = SQLAlchemy(app)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
 # Database Models
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -248,46 +247,53 @@ def require_auth(f):
             return jsonify({'error': 'Authentication required'}), 401
         return f(*args, **kwargs)
     return decorated_function
-
-# SMTP PROVIDERS
+# FIXED SMTP PROVIDERS - INCLUDING AMAZON SES
 SMTP_PROVIDERS = {
     'gmail': {
         'smtp_host': 'smtp.gmail.com',
         'smtp_port': 587,
         'requires_app_password': True,
-        'instructions': 'Use Gmail App Password (not regular password)'
+        'instructions': 'Use Gmail App Password (not regular password)',
+        'name': 'Gmail'
     },
     'outlook': {
         'smtp_host': 'smtp-mail.outlook.com', 
         'smtp_port': 587,
         'requires_app_password': False,
-        'instructions': 'Use regular Outlook password'
+        'instructions': 'Use regular Outlook password',
+        'name': 'Outlook/Hotmail'
     },
     'yahoo': {
         'smtp_host': 'smtp.mail.yahoo.com',
         'smtp_port': 587,
         'requires_app_password': True,
-        'instructions': 'Use Yahoo App Password'
+        'instructions': 'Use Yahoo App Password',
+        'name': 'Yahoo Mail'
     },
     'amazon_ses': {
         'smtp_host': 'email-smtp.us-east-1.amazonaws.com',
         'smtp_port': 587,
         'requires_app_password': False,
         'instructions': 'Use AWS SES SMTP credentials (not IAM credentials)',
+        'name': 'Amazon SES',
         'regions': {
             'us-east-1': 'email-smtp.us-east-1.amazonaws.com',
             'us-west-2': 'email-smtp.us-west-2.amazonaws.com',
             'eu-west-1': 'email-smtp.eu-west-1.amazonaws.com',
-            'ap-southeast-1': 'email-smtp.ap-southeast-1.amazonaws.com'
+            'ap-southeast-1': 'email-smtp.ap-southeast-1.amazonaws.com',
+            'us-west-1': 'email-smtp.us-west-1.amazonaws.com',
+            'eu-central-1': 'email-smtp.eu-central-1.amazonaws.com'
         }
     },
     'custom': {
         'smtp_host': '',
         'smtp_port': 587,
         'requires_app_password': False,
-        'instructions': 'Enter your custom SMTP settings'
+        'instructions': 'Enter your custom SMTP settings',
+        'name': 'Custom SMTP'
     }
 }
+
 # Utility Functions
 def detect_email_provider(email):
     try:
@@ -306,74 +312,167 @@ def detect_email_provider(email):
         return 'custom'
 
 def clean_smtp_host(smtp_host):
+    """CRITICAL FIX: Clean SMTP host to remove HTTP prefixes"""
     if not smtp_host:
         return smtp_host
-    smtp_host = smtp_host.strip()
+    
+    # Clean the host
+    smtp_host = str(smtp_host).strip()
+    
+    # Remove protocol prefixes
     if smtp_host.startswith('http://'):
         smtp_host = smtp_host[7:]
     elif smtp_host.startswith('https://'):
         smtp_host = smtp_host[8:]
     elif smtp_host.startswith('smtp://'):
         smtp_host = smtp_host[7:]
+    
+    # Remove paths and trailing slashes
     smtp_host = smtp_host.split('/')[0]
+    smtp_host = smtp_host.rstrip('/')
+    
+    logger.info(f"Cleaned SMTP host: {smtp_host}")
     return smtp_host
 
 def is_aws_ses_smtp_username(username):
-    return bool(re.match(r'^[A-Z0-9]{20}$', username))
+    """Check if username looks like AWS SES SMTP credentials"""
+    if not username:
+        return False
+    return bool(re.match(r'^[A-Z0-9]{20}$', username.strip()))
 
 def validate_smtp_comprehensive(email, password, smtp_host, smtp_port, smtp_username=None, provider='custom'):
+    """BULLETPROOF SMTP validation for ALL providers"""
     if not smtp_username:
         smtp_username = email
     
+    # CRITICAL: Clean the SMTP host first
+    original_host = smtp_host
     smtp_host = clean_smtp_host(smtp_host)
-    logger.info(f"SMTP Validation - Provider: {provider}, Host: {smtp_host}, Port: {smtp_port}")
+    
+    logger.info(f"🔍 SMTP Validation START")
+    logger.info(f"   Provider: {provider}")
+    logger.info(f"   Original Host: {original_host}")
+    logger.info(f"   Cleaned Host: {smtp_host}")
+    logger.info(f"   Port: {smtp_port}")
+    logger.info(f"   Username: {smtp_username}")
     
     try:
+        # Provider-specific validation
         if provider == 'amazon_ses':
-            if not smtp_host.startswith('email-smtp.'):
+            logger.info("🔍 AWS SES Validation...")
+            
+            # Check host format
+            if not smtp_host.startswith('email-smtp.') or not smtp_host.endswith('.amazonaws.com'):
                 return {
                     'success': False,
-                    'message': f'Invalid AWS SES SMTP host. Use format: email-smtp.region.amazonaws.com',
-                    'error_type': 'aws_ses_host_error'
+                    'message': f'❌ Invalid AWS SES SMTP host. Expected format: email-smtp.region.amazonaws.com, got: {smtp_host}',
+                    'error_type': 'aws_ses_host_error',
+                    'suggestions': [
+                        'Use format: email-smtp.us-east-1.amazonaws.com',
+                        'Replace us-east-1 with your AWS region',
+                        'Do not include http:// or https:// prefixes'
+                    ]
                 }
+            
+            # Check username format
             if not is_aws_ses_smtp_username(smtp_username):
                 return {
                     'success': False,
-                    'message': f'Invalid AWS SES SMTP username format. Expected 20-character alphanumeric',
-                    'error_type': 'aws_ses_username_error'
+                    'message': f'❌ Invalid AWS SES SMTP username. Expected 20-character alphanumeric string, got: {smtp_username}',
+                    'error_type': 'aws_ses_username_error',
+                    'suggestions': [
+                        'Use AWS SES SMTP credentials (NOT IAM credentials)',
+                        'Username should be exactly 20 characters like: AKIAIOSFODNN7EXAMPLE',
+                        'Get SMTP credentials from AWS SES Console > SMTP Settings > Create SMTP Credentials'
+                    ]
+                }
+            
+            logger.info("✅ AWS SES format validation passed")
+        
+        elif provider == 'gmail':
+            if smtp_host != 'smtp.gmail.com':
+                return {
+                    'success': False,
+                    'message': f'❌ Invalid Gmail SMTP host. Expected: smtp.gmail.com, got: {smtp_host}',
+                    'error_type': 'gmail_host_error'
                 }
         
+        elif provider == 'yahoo':
+            if smtp_host != 'smtp.mail.yahoo.com':
+                return {
+                    'success': False,
+                    'message': f'❌ Invalid Yahoo SMTP host. Expected: smtp.mail.yahoo.com, got: {smtp_host}',
+                    'error_type': 'yahoo_host_error'
+                }
+        
+        elif provider == 'outlook':
+            if smtp_host != 'smtp-mail.outlook.com':
+                return {
+                    'success': False,
+                    'message': f'❌ Invalid Outlook SMTP host. Expected: smtp-mail.outlook.com, got: {smtp_host}',
+                    'error_type': 'outlook_host_error'
+                }
+        
+        # DNS resolution test
+        logger.info(f"🔍 Testing DNS resolution for: {smtp_host}")
         try:
-            socket.gethostbyname(smtp_host)
-        except socket.gaierror:
+            resolved_ip = socket.gethostbyname(smtp_host)
+            logger.info(f"✅ DNS resolution successful: {smtp_host} -> {resolved_ip}")
+        except socket.gaierror as dns_error:
+            logger.error(f"❌ DNS resolution failed for {smtp_host}: {dns_error}")
             return {
                 'success': False,
-                'message': f'Cannot resolve SMTP host "{smtp_host}". Please check the hostname.',
-                'error_type': 'dns_error'
+                'message': f'❌ Cannot resolve SMTP host "{smtp_host}". Please check the hostname.',
+                'error_type': 'dns_error',
+                'suggestions': [
+                    'Verify the SMTP hostname is correct',
+                    'Check your internet connection',
+                    'For AWS SES, verify the region is correct'
+                ]
             }
         
+        # SMTP connection test
+        logger.info(f"🔌 Attempting SMTP connection to {smtp_host}:{smtp_port}")
         server = None
+        
         try:
+            # Choose connection method based on port
             if smtp_port == 465:
+                # SSL connection
                 context = ssl.create_default_context()
                 server = smtplib.SMTP_SSL(smtp_host, smtp_port, context=context, timeout=30)
+                logger.info("🔒 Connected using SMTP_SSL (port 465)")
             else:
+                # Regular SMTP with STARTTLS
                 server = smtplib.SMTP(smtp_host, smtp_port, timeout=30)
-                if smtp_port in [587, 25]:
+                logger.info(f"🔌 Connected using SMTP (port {smtp_port})")
+                
+                # Start TLS for secure ports
+                if smtp_port in [587, 25, 2587]:
                     server.starttls()
+                    logger.info("🔒 STARTTLS enabled")
             
+            # Test authentication
+            logger.info(f"🔐 Testing authentication for: {smtp_username}")
             server.login(smtp_username, password)
+            logger.info("✅ SMTP Authentication successful!")
             
+            # Send test email
+            logger.info("📧 Sending test email...")
             test_msg = MIMEText(f"""
-SMTP Configuration Validated Successfully!
+✅ SMTP Configuration Validated Successfully!
 
-Email: {email}
-SMTP Host: {smtp_host}
-Port: {smtp_port}
-Username: {smtp_username}
-Provider: {provider.upper()}
+Your email configuration has been tested and verified:
 
-Your account is ready for email warmup campaigns.
+📧 Email: {email}
+🖥️ SMTP Host: {smtp_host}
+🔌 Port: {smtp_port}
+👤 Username: {smtp_username}
+⚙️ Provider: {provider.upper()}
+
+🎉 Your account is now ready for email warmup campaigns!
+
+This test email confirms that your SMTP settings are working correctly.
 
 ---
 KEXY Email Warmup System
@@ -381,68 +480,115 @@ KEXY Email Warmup System
             
             test_msg['From'] = email
             test_msg['To'] = email
-            test_msg['Subject'] = "SMTP Validation Successful - KEXY Email Warmup"
+            test_msg['Subject'] = "✅ SMTP Validation Successful - KEXY Email Warmup"
             
             server.send_message(test_msg)
+            logger.info("✅ Test email sent successfully!")
+            
             server.quit()
+            logger.info("🎉 SMTP validation completed successfully!")
             
             return {
                 'success': True,
-                'message': f'SMTP validation successful! Test email sent to {email}',
-                'details': f'Connected to {smtp_host}:{smtp_port} using {provider}',
+                'message': f'✅ SMTP validation successful! Test email sent to {email}. Check your inbox to confirm.',
+                'details': f'Successfully connected to {smtp_host}:{smtp_port} using {provider}',
                 'provider': provider
             }
             
         except smtplib.SMTPAuthenticationError as auth_error:
+            logger.error(f"❌ SMTP Authentication failed: {auth_error}")
+            
+            # Provider-specific error messages
             suggestions = []
             if provider == 'amazon_ses':
                 suggestions = [
-                    'Use AWS SES SMTP credentials (not IAM credentials)',
-                    'Verify your AWS SES account is not in sandbox mode',
-                    'Check that your domain/email is verified in AWS SES'
+                    'Verify you are using AWS SES SMTP credentials (NOT IAM access keys)',
+                    'Check that your AWS SES account is not in sandbox mode',
+                    'Ensure your sending email domain is verified in AWS SES',
+                    'Confirm you are using the correct AWS region',
+                    'Verify the SMTP password is correct (different from AWS console password)'
                 ]
             elif provider == 'gmail':
                 suggestions = [
-                    'Use an App Password instead of your regular password',
-                    'Enable 2-Factor Authentication first'
+                    'Use an App Password instead of your regular Gmail password',
+                    'Enable 2-Factor Authentication on your Google account first',
+                    'Generate App Password: Google Account > Security > App passwords',
+                    'Make sure "Less secure app access" is enabled (if using regular password)'
                 ]
             elif provider == 'yahoo':
                 suggestions = [
-                    'Use an App Password instead of your regular password',
-                    'Enable 2-Factor Authentication first'
+                    'Use an App Password instead of your regular Yahoo password',
+                    'Enable 2-Factor Authentication on your Yahoo account first',
+                    'Generate App Password: Yahoo Account Security > Generate app password'
+                ]
+            elif provider == 'outlook':
+                suggestions = [
+                    'Use your regular Microsoft account password',
+                    'If 2FA is enabled, create an App Password in Microsoft Account Security',
+                    'Ensure your account allows SMTP access'
                 ]
             else:
-                suggestions = ['Check your username and password']
+                suggestions = [
+                    'Double-check your username and password',
+                    'Verify your email provider allows SMTP access',
+                    'Check if you need an app-specific password'
+                ]
                 
             return {
                 'success': False,
-                'message': f'SMTP Authentication failed: {str(auth_error)}',
+                'message': f'❌ SMTP Authentication failed: {str(auth_error)}',
                 'error_type': 'auth_error',
                 'suggestions': suggestions
             }
             
-        except Exception as smtp_error:
+        except smtplib.SMTPConnectError as conn_error:
+            logger.error(f"❌ SMTP Connection failed: {conn_error}")
             return {
                 'success': False,
-                'message': f'SMTP Error: {str(smtp_error)}',
+                'message': f'❌ Cannot connect to SMTP server {smtp_host}:{smtp_port}. Connection error: {str(conn_error)}',
+                'error_type': 'connection_error',
+                'suggestions': [
+                    'Verify the SMTP host and port are correct',
+                    'Check your firewall/network allows SMTP connections',
+                    'Try different ports: 587 (TLS), 465 (SSL), 25 (unsecured)'
+                ]
+            }
+            
+        except smtplib.SMTPServerDisconnected as disc_error:
+            logger.error(f"❌ SMTP Server disconnected: {disc_error}")
+            return {
+                'success': False,
+                'message': f'❌ SMTP server disconnected unexpectedly: {str(disc_error)}',
+                'error_type': 'disconnection_error'
+            }
+            
+        except Exception as smtp_error:
+            logger.error(f"❌ SMTP Error: {smtp_error}")
+            return {
+                'success': False,
+                'message': f'❌ SMTP Error: {str(smtp_error)}',
                 'error_type': 'smtp_error'
             }
         
         finally:
+            # Always close the connection
             if server:
                 try:
                     server.quit()
+                    logger.info("🔌 SMTP connection closed")
                 except:
                     pass
         
     except Exception as general_error:
+        logger.error(f"❌ General validation error: {general_error}")
         return {
             'success': False,
-            'message': f'Validation failed: {str(general_error)}',
+            'message': f'❌ Validation failed: {str(general_error)}',
             'error_type': 'general_error'
         }
 
 def get_setup_instructions(provider):
+    """Get setup instructions for each provider"""
     base_instructions = {
         'gmail': {
             'title': 'Gmail Setup Instructions',
@@ -450,14 +596,15 @@ def get_setup_instructions(provider):
                 '1. Enable 2-Factor Authentication on your Google account',
                 '2. Go to Google Account settings > Security > App passwords',
                 '3. Generate an App Password for "Mail"',
-                '4. Use your Gmail address and the generated App Password'
+                '4. Use your Gmail address and the generated App Password (not your regular password)'
             ]
         },
         'outlook': {
             'title': 'Outlook Setup Instructions', 
             'steps': [
-                '1. Use your regular Outlook email and password',
-                '2. If 2FA is enabled, you may need to create an App Password'
+                '1. Use your regular Microsoft account email and password',
+                '2. If 2FA is enabled, create an App Password in Microsoft Account Security',
+                '3. Ensure your account allows SMTP access'
             ]
         },
         'yahoo': {
@@ -465,24 +612,27 @@ def get_setup_instructions(provider):
             'steps': [
                 '1. Enable 2-Factor Authentication on your Yahoo account',
                 '2. Go to Yahoo Account Security settings',
-                '3. Generate an App Password for "Mail"'
+                '3. Generate an App Password for "Mail" application',
+                '4. Use your Yahoo email and the generated App Password'
             ]
         },
         'amazon_ses': {
             'title': 'Amazon SES Setup Instructions',
             'steps': [
-                '1. Log into AWS Console and go to Amazon SES',
+                '1. Log into AWS Console and navigate to Amazon SES',
                 '2. Go to Account Dashboard > SMTP Settings',
-                '3. Click "Create SMTP Credentials"',
-                '4. Download the SMTP username and password (NOT IAM credentials)',
-                '5. Verify your domain/email in SES if in sandbox mode'
+                '3. Click "Create SMTP Credentials" (NOT IAM credentials)',
+                '4. Download the SMTP username and password',
+                '5. Verify your domain/email in SES if in sandbox mode',
+                '6. Use the SES SMTP endpoint for your region (e.g., email-smtp.us-east-1.amazonaws.com)'
             ]
         },
         'custom': {
             'title': 'Custom SMTP Setup',
             'steps': [
                 '1. Get SMTP settings from your email provider',
-                '2. Enter the correct SMTP host and port'
+                '2. Enter the correct SMTP host and port',
+                '3. Use your email credentials or app-specific password'
             ]
         }
     }
@@ -577,180 +727,4 @@ def forgot_password():
         else:
             return jsonify({
                 'success': True,
-                'message': 'If that email exists, password reset instructions have been sent'
-            })
-    except Exception as e:
-        return jsonify({'success': False, 'message': 'Request failed'})
-
-@app.route('/api/reset-password', methods=['POST'])
-def reset_password():
-    try:
-        data = request.get_json()
-        token = data.get('token', '')
-        new_password = data.get('password', '')
-        
-        if not token or not new_password:
-            return jsonify({'success': False, 'message': 'Token and new password are required'})
-        
-        if len(new_password) < 6:
-            return jsonify({'success': False, 'message': 'Password must be at least 6 characters'})
-        
-        user = User.query.filter_by(reset_token=token).first()
-        
-        if user and user.verify_reset_token(token):
-            user.set_password(new_password)
-            user.reset_token = None
-            user.reset_token_expires = None
-            db.session.commit()
-            
-            return jsonify({
-                'success': True,
-                'message': 'Password reset successfully! You can now login with your new password.'
-            })
-        else:
-            return jsonify({'success': False, 'message': 'Invalid or expired reset token'})
-    except Exception as e:
-        return jsonify({'success': False, 'message': 'Reset failed'})
-
-@app.route('/api/logout', methods=['POST'])
-def logout():
-    return force_user_logout()
-
-@app.route('/api/detect-provider', methods=['POST'])
-def detect_provider():
-    try:
-        data = request.get_json()
-        email = data.get('email', '')
-        
-        provider = detect_email_provider(email)
-        config = SMTP_PROVIDERS.get(provider, SMTP_PROVIDERS['custom'])
-        
-        return jsonify({
-            'provider': provider,
-            'config': config,
-            'setup_instructions': get_setup_instructions(provider)
-        })
-    except Exception as e:
-        return jsonify({'error': 'Provider detection failed'})
-
-@app.route('/api/test-smtp', methods=['POST'])
-def test_smtp():
-    try:
-        data = request.get_json()
-        
-        email = data.get('email', '')
-        password = data.get('password', '')
-        smtp_host = data.get('smtp_host', '')
-        smtp_port = int(data.get('smtp_port', 587))
-        smtp_username = data.get('smtp_username', email)
-        provider = data.get('provider', 'custom')
-        
-        if not all([email, password, smtp_host]):
-            return jsonify({
-                'success': False,
-                'message': 'Email, SMTP host, and password are required'
-            })
-        
-        result = validate_smtp_comprehensive(email, password, smtp_host, smtp_port, smtp_username, provider)
-        return jsonify(result)
-        
-    except Exception as e:
-        logger.error(f"SMTP test error: {str(e)}")
-        return jsonify({
-            'success': False,
-            'message': f'SMTP test failed: {str(e)}'
-        })
-
-@app.route('/api/dashboard/stats')
-@require_auth
-def dashboard_stats():
-    try:
-        user = get_current_user()
-        campaigns = Campaign.query.filter_by(user_id=user.id).all()
-        
-        total_emails = sum(c.emails_sent for c in campaigns)
-        total_runs = sum(c.run_count for c in campaigns)
-        
-        stats = {
-            'active_campaigns': len([c for c in campaigns if c.status == 'active']),
-            'total_campaigns': len(campaigns),
-            'emails_sent_today': total_emails,
-            'total_runs': total_runs,
-            'avg_reputation_score': 85.5
-        }
-        
-        return jsonify(stats)
-    except Exception as e:
-        return jsonify({'error': 'Failed to load stats'})
-
-@app.route('/api/campaigns', methods=['GET', 'POST'])
-@require_auth
-def campaigns_api():
-    user = get_current_user()
-    
-    try:
-        if request.method == 'POST':
-            data = request.get_json()
-            
-            required_fields = ['name', 'email', 'smtp_host', 'smtp_password']
-            for field in required_fields:
-                if not data.get(field):
-                    return jsonify({'success': False, 'message': f'{field} is required'})
-            
-            campaign = Campaign(
-                name=data.get('name'),
-                email_address=data.get('email'),
-                smtp_host=clean_smtp_host(data.get('smtp_host')),
-                smtp_port=data.get('smtp_port', 587),
-                smtp_username=data.get('smtp_username', data.get('email')),
-                smtp_password=data.get('smtp_password'),
-                provider=data.get('provider', 'custom'),
-                user_id=user.id
-            )
-            
-            db.session.add(campaign)
-            db.session.commit()
-            
-            logger.info(f"Campaign saved: {campaign.name} for user: {user.username}")
-            
-            return jsonify({
-                'success': True, 
-                'message': 'Campaign created successfully', 
-                'campaign': campaign.to_dict()
-            })
-        
-        else:
-            campaigns = Campaign.query.filter_by(user_id=user.id).all()
-            return jsonify([c.to_dict() for c in campaigns])
-            
-    except Exception as e:
-        logger.error(f"Campaign error: {e}")
-        db.session.rollback()
-        return jsonify({'success': False, 'message': 'Campaign operation failed'})
-def cleanup_expired_tokens():
-    try:
-        expired_count = LoginToken.query.filter(
-            LoginToken.expires_at < datetime.utcnow()
-        ).delete()
-        db.session.commit()
-        if expired_count > 0:
-            logger.info(f"Cleaned up {expired_count} expired login tokens")
-    except Exception as e:
-        logger.error(f"Token cleanup error: {e}")
-        db.session.rollback()
-
-with app.app_context():
-    db.create_all()
-    cleanup_expired_tokens()
-    
-    if not User.query.filter_by(email='demo@example.com').first():
-        demo_user = User(username='demo', email='demo@example.com')
-        demo_user.set_password('demo123')
-        demo_user.auto_login = True
-        db.session.add(demo_user)
-        db.session.commit()
-        logger.info("Demo user created: demo@example.com / demo123")
-
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 8080))
-    app.run(host='0.0.0.0', port=port, debug=False)
+                'message': 'If that email exists, password reset instructions have been
