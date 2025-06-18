@@ -4,9 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Email Warmup Dashboard</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
     <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         .gradient-bg {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -143,7 +143,7 @@
                     <div class="text-right">
                         <div class="text-white text-sm" id="user-welcome">
                             <i class="fas fa-check-circle text-green-300 mr-1"></i>
-                            Welcome back, scott! (Persistent login active)
+                            Welcome back, admin! (Persistent login active)
                         </div>
                     </div>
                     <button onclick="logout()" class="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition-colors">
@@ -284,14 +284,14 @@
                                 <div>
                                     <label for="campaign-name" class="block text-sm font-medium text-gray-700">Campaign Name</label>
                                     <input type="text" id="campaign-name" name="name" required
-                                           class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                                           class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 px-3 py-2"
                                            placeholder="My Email Warmup Campaign">
                                 </div>
 
                                 <div>
                                     <label for="email-address" class="block text-sm font-medium text-gray-700">Email Address</label>
                                     <input type="email" id="email-address" name="email" required
-                                           class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                                           class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 px-3 py-2"
                                            placeholder="your.email@example.com">
                                 </div>
                             </div>
@@ -299,64 +299,27 @@
                             <!-- Email Provider Configuration -->
                             <div class="space-y-4">
                                 <h3 class="text-md font-medium text-gray-900 border-b pb-2">Email Provider</h3>
-    <select id="email-provider" name="provider" onchange="handleProviderChange(this.value)"
-        class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
-    <option value="">Select Email Provider</option>
-    <option value="gmail">Gmail</option>
-    <option value="outlook">Outlook/Hotmail</option>
-    <option value="yahoo">Yahoo Mail</option>
-    <option value="amazon_ses_us_east_1">Amazon SES (US East 1)</option>
-    <option value="amazon_ses_us_west_2">Amazon SES (US West 2)</option>
-    <option value="amazon_ses_eu_west_1">Amazon SES (EU West 1)</option>
-    <option value="custom_smtp">Custom SMTP</option>
 
-    <!-- Email Provider Configuration -->
-<div class="space-y-4">
-    <h3 class="text-md font-medium text-gray-900 border-b pb-2">Email Provider</h3>
+                                <div>
+                                    <label for="email-provider" class="block text-sm font-medium text-gray-700">Email Provider</label>
+                                    <select id="email-provider" name="provider" onchange="handleProviderChange(this.value)"
+                                            class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 px-3 py-2">
+                                        <option value="">Select Email Provider</option>
+                                        <option value="gmail">Gmail</option>
+                                        <option value="outlook">Outlook/Hotmail</option>
+                                        <option value="yahoo">Yahoo Mail</option>
+                                        <option value="amazon_ses_us_east_1">Amazon SES (US East 1)</option>
+                                        <option value="amazon_ses_us_west_2">Amazon SES (US West 2)</option>
+                                        <option value="amazon_ses_eu_west_1">Amazon SES (EU West 1)</option>
+                                        <option value="amazon_ses_eu_central_1">Amazon SES (EU Central 1)</option>
+                                        <option value="amazon_ses_ap_southeast_1">Amazon SES (Asia Pacific - Singapore)</option>
+                                        <option value="amazon_ses_ap_southeast_2">Amazon SES (Asia Pacific - Sydney)</option>
+                                        <option value="amazon_ses_ap_northeast_1">Amazon SES (Asia Pacific - Tokyo)</option>
+                                        <option value="amazon_ses_ca_central_1">Amazon SES (Canada Central)</option>
+                                        <option value="custom_smtp">Custom SMTP</option>
+                                    </select>
 
-    <div>
-        <label for="email-provider" class="block text-sm font-medium text-gray-700">Email Provider</label>
-        <select id="email-provider" name="provider" onchange="handleProviderChange(this.value)"
-                class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
-            <!-- Your provider options -->
-        </select>
-
-        <!-- Provider Help Text -->
-        <div id="provider-help" class="provider-help">
-            <!-- Dynamic help content will be inserted here -->
-        </div>
-    </div>
-
-    <div class="grid grid-cols-2 gap-4">
-        <!-- Username and Password fields -->
-    </div>
-
-    <!-- INSERT THE CUSTOM SMTP FIELDS CODE RIGHT HERE -->
-    <!-- Custom SMTP Fields -->
-    <div id="custom-smtp-fields" style="display: none;">
-        <div class="grid grid-cols-3 gap-4">
-            <div class="col-span-2">
-                <label for="smtp-host" class="block text-sm font-medium text-gray-700">SMTP Host</label>
-                <input type="text" id="smtp-host" name="smtp_host"
-                       class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                       placeholder="smtp.example.com">
-            </div>
-            <div>
-                <label for="smtp-port" class="block text-sm font-medium text-gray-700">Port</label>
-                <input type="number" id="smtp-port" name="smtp_port" value="587"
-                       class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
-            </div>
-        </div>
-        <div class="flex items-center mt-2">
-            <input type="checkbox" id="use-tls" name="use_tls" checked
-                   class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
-            <label for="use-tls" class="ml-2 block text-sm text-gray-900">Use TLS</label>
-        </div>
-    </div>
-</div>
-    </select>
-
-                                 <!-- Provider Help Text -->
+                                    <!-- Provider Help Text -->
                                     <div id="provider-help" class="provider-help">
                                         <!-- Dynamic help content will be inserted here -->
                                     </div>
@@ -368,7 +331,7 @@
                                             <span id="username-label">SMTP Username</span>
                                         </label>
                                         <input type="text" id="smtp-username" name="username" required
-                                               class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                                               class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 px-3 py-2"
                                                placeholder="username">
                                     </div>
                                     
@@ -377,7 +340,7 @@
                                             <span id="password-label">SMTP Password</span>
                                         </label>
                                         <input type="password" id="smtp-password" name="password" required
-                                               class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                                               class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 px-3 py-2"
                                                placeholder="password">
                                     </div>
                                 </div>
@@ -388,13 +351,13 @@
                                         <div class="col-span-2">
                                             <label for="smtp-host" class="block text-sm font-medium text-gray-700">SMTP Host</label>
                                             <input type="text" id="smtp-host" name="smtp_host"
-                                                   class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                                                   class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 px-3 py-2"
                                                    placeholder="smtp.example.com">
                                         </div>
                                         <div>
                                             <label for="smtp-port" class="block text-sm font-medium text-gray-700">Port</label>
                                             <input type="number" id="smtp-port" name="smtp_port" value="587"
-                                                   class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                                                   class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 px-3 py-2">
                                         </div>
                                     </div>
                                     <div class="flex items-center mt-2">
@@ -414,7 +377,7 @@
                                 <div>
                                     <label for="industry" class="block text-sm font-medium text-gray-700">Industry</label>
                                     <select id="industry" name="industry" required
-                                            class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                                            class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 px-3 py-2">
                                         <option value="">Select Industry</option>
                                         <option value="technology">Technology</option>
                                         <option value="finance">Finance</option>
@@ -431,14 +394,14 @@
                                 <div>
                                     <label for="daily-volume" class="block text-sm font-medium text-gray-700">Daily Volume</label>
                                     <input type="number" id="daily-volume" name="daily_volume" min="5" max="100" value="10"
-                                           class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                                           class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 px-3 py-2">
                                     <p class="text-xs text-gray-500 mt-1">5-100 emails per day</p>
                                 </div>
 
                                 <div>
                                     <label for="warmup-days" class="block text-sm font-medium text-gray-700">Warmup Days</label>
                                     <input type="number" id="warmup-days" name="warmup_days" min="7" max="90" value="30"
-                                           class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                                           class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 px-3 py-2">
                                     <p class="text-xs text-gray-500 mt-1">7-90 days recommended</p>
                                 </div>
                             </div>
@@ -513,3 +476,12 @@
     <script src="/static/js/dashboard.js"></script>
 </body>
 </html>
+    <script id="html_badge_script1">
+        window.__genspark_remove_badge_link = "https://www.genspark.ai/api/html_badge/" +
+            "remove_badge?token=To%2FBnjzloZ3UfQdcSaYfDjlzdRyOm7MrsssqFIHkdI92KHscFudpAbFoucEiVb0TNtYyQrlgrDNE1%2FtbdfNgUhKqvghQsaxiFvjsunvq5VX0RCnF%2B9DYMo%2FvZ3uk4oJb04MT2N9Tv%2FZgIVpB7GDT6STSH4o2Q4vf%2Fp0rpHPa%2FET8AZbZxeNC2yxTqHeTYwf8pWj%2F7IRDClGluVQPFySMNpY33QskpQT73PzBWgQOzZla4qtCcaafW6RtbVhPd5j4YQ%2FTli2l0LV%2BYDU1mrYofUOYnJJldGo7N57UBFqY7IMWiMG7PVMbMXeupfIeyPxV9J9k3CCTDJMbKjy4nyMrErXqduxDEZwWAM8NH56gFtxgrUbdmkIns1Y%2BbCb%2FwcMAO3988GENvUj%2BXxSqiX6awwBoCadUB0xMRk21GRHSd%2B5Kw5P1t36KTI4sDtEU1GXZnGls5pbhFFBbxEtCLEQ%2FO8D3bVCVlFBFUsrWmBkf7a5M%2BQdr3qP3YODkyH3lA8DxCBVPxkx%2B1q60zMvwI643Dw%3D%3D";
+        window.__genspark_locale = "en-US";
+        window.__genspark_token = "To/BnjzloZ3UfQdcSaYfDjlzdRyOm7MrsssqFIHkdI92KHscFudpAbFoucEiVb0TNtYyQrlgrDNE1/tbdfNgUhKqvghQsaxiFvjsunvq5VX0RCnF+9DYMo/vZ3uk4oJb04MT2N9Tv/ZgIVpB7GDT6STSH4o2Q4vf/p0rpHPa/ET8AZbZxeNC2yxTqHeTYwf8pWj/7IRDClGluVQPFySMNpY33QskpQT73PzBWgQOzZla4qtCcaafW6RtbVhPd5j4YQ/Tli2l0LV+YDU1mrYofUOYnJJldGo7N57UBFqY7IMWiMG7PVMbMXeupfIeyPxV9J9k3CCTDJMbKjy4nyMrErXqduxDEZwWAM8NH56gFtxgrUbdmkIns1Y+bCb/wcMAO3988GENvUj+XxSqiX6awwBoCadUB0xMRk21GRHSd+5Kw5P1t36KTI4sDtEU1GXZnGls5pbhFFBbxEtCLEQ/O8D3bVCVlFBFUsrWmBkf7a5M+Qdr3qP3YODkyH3lA8DxCBVPxkx+1q60zMvwI643Dw==";
+    </script>
+    
+    <script id="html_notice_dialog_script" src="https://www.genspark.ai/notice_dialog.js"></script>
+    
