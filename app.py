@@ -796,6 +796,7 @@ def campaigns():
             db.session.rollback()
             return jsonify({'success': False, 'message': 'Failed to create campaign'}), 500
 
+# FIXED: All route parameters with proper 
 @app.route('/api/campaigns/', methods=['GET', 'PUT', 'DELETE'])
 def campaign_detail(campaign_id):
     campaign = Campaign.query.get(campaign_id)
@@ -1027,4 +1028,3 @@ if __name__ == '__main__':
     app.run(host='0.0.0.0', port=port, debug=debug)
 
 logger.info("KEXY Email Warmup System with AI Engine loaded successfully!")
-            
