@@ -50,7 +50,7 @@ CORS(app)
 
 # Encryption key for sensitive data
 ENCRYPTION_KEY = os.environ.get('ENCRYPTION_KEY', Fernet.generate_key()).encode() if isinstance(os.environ.get('ENCRYPTION_KEY', Fernet.generate_key()), str) else os.environ.get('ENCRYPTION_KEY', Fernet.generate_key())
-cipher_suite = Fernet(ENCRYPTION_KEY)
+
 
 # Logging setup
 logging.basicConfig(level=logging.INFO)
