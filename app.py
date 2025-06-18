@@ -586,19 +586,41 @@ def process_warmup_campaigns():
         logger.error(f"Error processing warmup campaigns: {str(e)}")
 
 def start_warmup_scheduler():
-    """Start the background email scheduler"""
+    """Start the background email scheduler with more frequent checks"""
     def run_scheduler():
-        # Schedule email sending every hour during business hours
-        schedule.every().hour.do(process_warmup_campaigns)
+        # Schedule email sending every 15 minutes during business hours
+        schedule.every(15).minutes.do(process_warmup_campaigns)
+        
+        # Optional: Add a daily summary at 6 PM
+        schedule.every().day.at("18:00").do(log_daily_summary)
         
         while True:
             schedule.run_pending()
-            time.sleep(60)  # Check every minute
+            time.sleep(60)  # Check every minute for scheduled tasks
     
     # Start scheduler in background thread
     scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
     scheduler_thread.start()
-    logger.info("Warmup scheduler started")
+    logger.info("Warmup scheduler started - checking every 15 minutes during business hours")
+
+def log_daily_summary():
+    """Log a daily summary of campaign activity"""
+    try:
+        active_campaigns = Campaign.query.filter_by(status='active').all()
+        today = datetime.utcnow().date()
+        
+        for campaign in active_campaigns:
+            today_emails = EmailLog.query.filter(
+                EmailLog.campaign_id == campaign.id,
+                EmailLog.sent_at >= today,
+                EmailLog.status == 'sent'
+            ).count()
+            
+            logger.info(f"Daily Summary - Campaign '{campaign.name}': {today_emails} emails sent today")
+            
+    except Exception as e:
+        logger.error(f"Error generating daily summary: {str(e)}")
+
 
 # Utility Functions
 def validate_smtp_connection(provider, email, username, password, smtp_host=None, smtp_port=587, use_tls=True):
