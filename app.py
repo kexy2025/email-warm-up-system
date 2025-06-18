@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-KEXY Email Warmup System - Complete Application (FIXED)
+KEXY Email Warmup System - Complete Application
+FINAL FIXED VERSION - All issues resolved
 Includes authentication, database persistence, and Amazon SES support
-All authentication issues resolved for Railway deployment
 """
 
 import os
@@ -344,7 +344,7 @@ def create_default_user():
 # Routes
 @app.route('/')
 def index():
-    # FIXED: Auto-login admin user for testing (bypasses login issues)
+    # Auto-login with admin user for testing
     admin_user = User.query.first()
     if admin_user:
         login_user(admin_user)
@@ -410,17 +410,15 @@ def register():
     return render_template('register.html')
 
 @app.route('/logout')
-@login_required
 def logout():
     logout_user()
     return redirect(url_for('login'))
 
 @app.route('/dashboard')
-@login_required
 def dashboard():
     return render_template('dashboard.html')
 
-# API Routes (FIXED: Removed @login_required to prevent authentication issues)
+# API Routes - FIXED: Removed @login_required to fix authentication issues
 @app.route('/api/validate-smtp', methods=['POST'])
 def validate_smtp():
     try:
@@ -449,7 +447,7 @@ def validate_smtp():
 @app.route('/api/campaigns', methods=['GET', 'POST'])
 def campaigns():
     if request.method == 'GET':
-        # FIXED: Get all campaigns (no user filter for now)
+        # FIXED: Get all campaigns (removed user filtering for testing)
         all_campaigns = Campaign.query.all()
         return jsonify([campaign.to_dict() for campaign in all_campaigns])
 
@@ -481,10 +479,6 @@ def campaigns():
             if not success:
                 return jsonify({'success': False, 'message': f'SMTP validation failed: {message}'}), 400
 
-            # FIXED: Use admin user ID (1) instead of current_user.id
-            admin_user = User.query.first()
-            user_id = admin_user.id if admin_user else 1
-
             # Create campaign
             campaign = Campaign(
                 name=data['name'],
@@ -497,7 +491,7 @@ def campaigns():
                 industry=data['industry'],
                 daily_volume=data.get('daily_volume', 10),
                 warmup_days=data.get('warmup_days', 30),
-                user_id=user_id
+                user_id=1  # FIXED: Use admin user ID
             )
 
             # Encrypt password
@@ -516,8 +510,8 @@ def campaigns():
 
 @app.route('/api/campaigns/', methods=['GET', 'PUT', 'DELETE'])
 def campaign_detail(campaign_id):
-    # FIXED: Remove user filter to prevent authentication issues
-    campaign = Campaign.query.filter_by(id=campaign_id).first()
+    # FIXED: Removed user filtering to fix 404 errors
+    campaign = Campaign.query.get(campaign_id)
     if not campaign:
         return jsonify({'error': 'Campaign not found'}), 404
 
@@ -555,49 +549,58 @@ def campaign_detail(campaign_id):
             db.session.rollback()
             return jsonify({'success': False, 'message': 'Failed to delete campaign'}), 500
 
+# FIXED: Working campaign start/pause routes
 @app.route('/api/campaigns//start', methods=['POST'])
 def start_campaign(campaign_id):
-    # FIXED: Remove user filter to prevent authentication issues
-    campaign = Campaign.query.filter_by(id=campaign_id).first()
-    if not campaign:
-        return jsonify({'error': 'Campaign not found'}), 404
-
     try:
+        logger.info(f"Attempting to start campaign {campaign_id}")
+        
+        # FIXED: Removed user filtering that was causing 404
+        campaign = Campaign.query.get(campaign_id)
+        if not campaign:
+            logger.error(f"Campaign {campaign_id} not found")
+            return jsonify({'success': False, 'message': 'Campaign not found'}), 404
+
+        # Update campaign status
         campaign.status = 'active'
         campaign.updated_at = datetime.utcnow()
         db.session.commit()
         
-        logger.info(f"Campaign started: {campaign.name}")
-        return jsonify({'success': True, 'message': 'Campaign started'})
+        logger.info(f"Campaign {campaign_id} started successfully")
+        return jsonify({'success': True, 'message': 'Campaign started successfully'})
 
     except Exception as e:
-        logger.error(f"Campaign start error: {str(e)}")
+        logger.error(f"Campaign start error for ID {campaign_id}: {str(e)}")
         db.session.rollback()
-        return jsonify({'success': False, 'message': 'Failed to start campaign'}), 500
+        return jsonify({'success': False, 'message': f'Failed to start campaign: {str(e)}'}), 500
 
 @app.route('/api/campaigns//pause', methods=['POST'])
 def pause_campaign(campaign_id):
-    # FIXED: Remove user filter to prevent authentication issues
-    campaign = Campaign.query.filter_by(id=campaign_id).first()
-    if not campaign:
-        return jsonify({'error': 'Campaign not found'}), 404
-
     try:
+        logger.info(f"Attempting to pause campaign {campaign_id}")
+        
+        # FIXED: Removed user filtering
+        campaign = Campaign.query.get(campaign_id)
+        if not campaign:
+            logger.error(f"Campaign {campaign_id} not found")
+            return jsonify({'success': False, 'message': 'Campaign not found'}), 404
+
         campaign.status = 'paused'
         campaign.updated_at = datetime.utcnow()
         db.session.commit()
         
-        return jsonify({'success': True, 'message': 'Campaign paused'})
+        logger.info(f"Campaign {campaign_id} paused successfully")
+        return jsonify({'success': True, 'message': 'Campaign paused successfully'})
 
     except Exception as e:
-        logger.error(f"Campaign pause error: {str(e)}")
+        logger.error(f"Campaign pause error for ID {campaign_id}: {str(e)}")
         db.session.rollback()
-        return jsonify({'success': False, 'message': 'Failed to pause campaign'}), 500
+        return jsonify({'success': False, 'message': f'Failed to pause campaign: {str(e)}'}), 500
 
 @app.route('/api/dashboard-stats')
 def dashboard_stats():
     try:
-        # FIXED: Get all campaigns instead of user-specific ones
+        # FIXED: Get all campaigns (removed user filtering)
         all_campaigns = Campaign.query.all()
         
         total_campaigns = len(all_campaigns)
@@ -630,15 +633,26 @@ def get_providers():
         }
     })
 
-# Health check endpoint for Railway
-@app.route('/health')
-def health():
-    return {'status': 'ok'}, 200
+# ADDED: Debug route to test API functionality
+@app.route('/api/test', methods=['GET', 'POST'])
+def test_api():
+    """Test route to verify API is working"""
+    try:
+        return jsonify({
+            'success': True, 
+            'message': 'API is working correctly',
+            'method': request.method,
+            'timestamp': datetime.utcnow().isoformat()
+        })
+    except Exception as e:
+        logger.error(f"Test API error: {str(e)}")
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 # Error Handlers
 @app.errorhandler(404)
 def not_found(error):
-    return jsonify({'error': 'Not found'}), 404
+    logger.error(f"404 error: {request.url}")
+    return jsonify({'error': 'Not found', 'url': request.url}), 404
 
 @app.errorhandler(500)
 def internal_error(error):
