@@ -15,6 +15,7 @@ from email.mime.multipart import MIMEMultipart
 import secrets
 import hashlib
 from functools import wraps
+import traceback  # ← ADDED THIS LINE
 
 # Flask and extensions
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for, flash
@@ -1121,17 +1122,45 @@ def internal_error(error):
 def forbidden(error):
     return jsonify({'error': 'Access forbidden'}), 403
 
-# Initialize database
+# Initialize database - FIXED VERSION
 def create_tables():
-    """Create database tables"""
+    """Create database tables with enhanced error handling"""
     try:
         with app.app_context():
+            logger.info(f"=== DATABASE INITIALIZATION STARTING ===")
+            logger.info(f"DATABASE_URL: {app.config['SQLALCHEMY_DATABASE_URI']}")
+            
+            # Force create all tables
             db.create_all()
+            logger.info("✅ Database tables created successfully")
+            
+            # Verify tables were created
+            try:
+                inspector = db.inspect(db.engine)
+                tables = inspector.get_table_names()
+                logger.info(f"✅ Tables in database: {tables}")
+                
+                # Test database connection
+                test_query = db.session.execute(db.text("SELECT 1")).fetchone()
+                logger.info(f"✅ Database connection test: {test_query}")
+                
+            except Exception as verify_error:
+                logger.error(f"❌ Table verification failed: {str(verify_error)}")
+            
             create_default_user()
             initialize_warmup_system()
-            logger.info("Database tables created successfully")
+            logger.info("=== DATABASE INITIALIZATION COMPLETE ===")
+            
     except Exception as e:
-        logger.error(f"Database initialization error: {str(e)}")
+        logger.error(f"❌ Database initialization error: {str(e)}")
+        logger.error(f"Full traceback: {traceback.format_exc()}")
+        
+        # Try to continue anyway
+        try:
+            create_default_user()
+            logger.info("⚠️ Continuing with default user creation despite DB error")
+        except Exception as user_error:
+            logger.error(f"❌ Could not create default user: {str(user_error)}")
 
 # Initialize warmup system
 def initialize_warmup_system():
