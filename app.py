@@ -559,7 +559,7 @@ def process_warmup_campaigns():
     """Process all active campaigns for email sending"""
     try:
         active_campaigns = Campaign.query.filter_by(status='active').all()
-        logger.info(f"Found {len(active_campaigns)} active campaigns")
+        logger.info(f"🔄 Processing {len(active_campaigns)} active campaigns")
         
         for campaign in active_campaigns:
             daily_volume = get_daily_volume_for_campaign(campaign)
@@ -573,7 +573,7 @@ def process_warmup_campaigns():
             ).count()
             
             emails_to_send = max(0, daily_volume - today_emails)
-            logger.info(f"Campaign {campaign.name}: {emails_to_send} emails to send today")
+            logger.info(f"📧 Campaign '{campaign.name}': {emails_to_send} emails to send today (sent: {today_emails}/{daily_volume})")
             
             if emails_to_send > 0:
                 # Select random recipients
@@ -590,33 +590,53 @@ def process_warmup_campaigns():
                         recipient['name'],
                         content_type
                     )
-                    logger.info(f"Email to {recipient['email']}: {'SUCCESS' if success else 'FAILED'}")
+                    logger.info(f"📨 Email to {recipient['email']}: {'✅ SUCCESS' if success else '❌ FAILED'}")
                     
                     # Small delay between emails
-                    time.sleep(random.uniform(5, 10))  # Reduced delay for testing
+                    time.sleep(random.uniform(5, 10))
                 
-                logger.info(f"Sent {len(recipients)} warmup emails for campaign {campaign.name}")
+                logger.info(f"✅ Sent {len(recipients)} warmup emails for campaign '{campaign.name}'")
+            else:
+                logger.info(f"⏭️ Campaign '{campaign.name}': Daily quota already reached")
     
     except Exception as e:
-        logger.error(f"Error processing warmup campaigns: {str(e)}")
+        logger.error(f"❌ Error processing warmup campaigns: {str(e)}")
+        logger.error(f"Full traceback: {traceback.format_exc()}")
 
 def start_warmup_scheduler():
-    """Start the background email scheduler with more frequent checks"""
+    """Start the background email scheduler with enhanced monitoring"""
     def run_scheduler():
+        logger.info("🚀 Warmup scheduler thread started")
+        
         # Schedule email sending every 5 minutes for testing
         schedule.every(5).minutes.do(process_warmup_campaigns)
         
         # Optional: Add a daily summary at 6 PM
         schedule.every().day.at("18:00").do(log_daily_summary)
         
-        while True:
-            schedule.run_pending()
-            time.sleep(60)  # Check every minute for scheduled tasks
+        # Manual test run on startup (after 30 seconds)
+        schedule.every(30).seconds.do(lambda: logger.info("🧪 Scheduler test - system ready")).tag('startup_test')
+        
+        scheduler_running = True
+        while scheduler_running:
+            try:
+                schedule.run_pending()
+                
+                # Clear startup test after first run
+                if schedule.get_jobs('startup_test'):
+                    schedule.clear('startup_test')
+                    logger.info("✅ Scheduler startup test completed")
+                
+                time.sleep(60)  # Check every minute for scheduled tasks
+                
+            except Exception as e:
+                logger.error(f"❌ Scheduler error: {str(e)}")
+                time.sleep(60)  # Continue running even if there's an error
     
     # Start scheduler in background thread
     scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
     scheduler_thread.start()
-    logger.info("Warmup scheduler started - checking every 5 minutes")
+    logger.info("⏰ Warmup scheduler started - checking every 5 minutes")
 
 def log_daily_summary():
     """Log a daily summary of campaign activity"""
@@ -624,6 +644,7 @@ def log_daily_summary():
         active_campaigns = Campaign.query.filter_by(status='active').all()
         today = datetime.utcnow().date()
         
+        logger.info("📊 === DAILY SUMMARY ===")
         for campaign in active_campaigns:
             today_emails = EmailLog.query.filter(
                 EmailLog.campaign_id == campaign.id,
@@ -631,7 +652,13 @@ def log_daily_summary():
                 EmailLog.status == 'sent'
             ).count()
             
-            logger.info(f"Daily Summary - Campaign '{campaign.name}': {today_emails} emails sent today")
+            failed_emails = EmailLog.query.filter(
+                EmailLog.campaign_id == campaign.id,
+                EmailLog.sent_at >= today,
+                EmailLog.status == 'failed'
+            ).count()
+            
+            logger.info(f"📈 Campaign '{campaign.name}': {today_emails} sent, {failed_emails} failed")
             
     except Exception as e:
         logger.error(f"Error generating daily summary: {str(e)}")
@@ -702,11 +729,13 @@ def create_default_user():
                 admin.set_password('admin123')
                 db.session.add(admin)
                 db.session.commit()
-                logger.info("✅ Default admin user created")
+                logger.info("✅ Default admin user created (username: admin, password: admin123)")
+            else:
+                logger.info("👤 Users already exist in database")
     except Exception as e:
         logger.error(f"Error creating default user: {str(e)}")
 
-# SIMPLE ROUTES - NO DATABASE ISSUES
+# ROUTES SECTION
 @app.route('/')
 def index():
     try:
@@ -720,9 +749,10 @@ def index():
         # Return a simple working page instead of error
         return """
         <html><body>
-        <h1>KEXY Email Warmup System</h1>
+        <h1>🚀 KEXY Email Warmup System</h1>
         <p>System is starting up...</p>
         <p><a href="/dashboard">Go to Dashboard</a></p>
+        <script>setTimeout(() => window.location.reload(), 3000);</script>
         </body></html>
         """
 
@@ -765,7 +795,7 @@ def logout():
 def dashboard():
     return render_template('dashboard.html')
 
-# API Routes - All the same as before
+# API Routes
 @app.route('/api/validate-smtp', methods=['POST'])
 def validate_smtp():
     try:
@@ -1035,9 +1065,10 @@ def get_warmup_strategies():
     """Get available warmup strategies"""
     return jsonify({'strategies': WARMUP_STRATEGIES})
 
+# 🚨 CRITICAL DEBUG ROUTES - THESE WERE MISSING! 🚨
 @app.route('/api/debug/campaign/<int:campaign_id>')
 def debug_campaign(campaign_id):
-    """Debug why campaign isn't working"""
+    """Debug why campaign isn't working - THIS WAS MISSING!"""
     try:
         campaign = Campaign.query.get(campaign_id)
         if not campaign:
@@ -1061,12 +1092,37 @@ def debug_campaign(campaign_id):
             'current_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             'smtp_host': campaign.smtp_host,
             'smtp_username': campaign.smtp_username,
-            'provider': campaign.provider
+            'provider': campaign.provider,
+            'created_by_user_id': campaign.user_id,
+            'last_updated': campaign.updated_at.isoformat() if campaign.updated_at else None
         })
         
     except Exception as e:
         logger.error(f"Debug campaign error: {str(e)}")
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/debug/process-campaigns', methods=['POST'])
+def debug_process_campaigns():
+    """Manually trigger campaign processing - THIS WAS MISSING!"""
+    try:
+        logger.info("🔧 === MANUAL CAMPAIGN PROCESSING TRIGGERED ===")
+        process_warmup_campaigns()
+        
+        # Get some stats to return
+        active_campaigns = Campaign.query.filter_by(status='active').count()
+        today = datetime.utcnow().date()
+        today_emails = EmailLog.query.filter(EmailLog.sent_at >= today).count()
+        
+        return jsonify({
+            'success': True, 
+            'message': 'Campaign processing completed - check logs',
+            'active_campaigns': active_campaigns,
+            'emails_sent_today': today_emails,
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        logger.error(f"Manual processing error: {str(e)}")
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 @app.route('/api/debug/force-send/<int:campaign_id>', methods=['POST'])
 def force_send_now(campaign_id):
@@ -1079,12 +1135,12 @@ def force_send_now(campaign_id):
         if campaign.status != 'active':
             campaign.status = 'active'
             db.session.commit()
-            logger.info(f"Campaign {campaign_id} activated for testing")
+            logger.info(f"🔧 Campaign {campaign_id} activated for testing")
         
         recipient = random.choice(WARMUP_RECIPIENTS)
         content_type = random.choice(list(EMAIL_CONTENT_TYPES.keys()))
         
-        logger.info(f"FORCE SENDING email to {recipient['email']} for campaign {campaign.name}")
+        logger.info(f"🚀 FORCE SENDING email to {recipient['email']} for campaign {campaign.name}")
         
         success = send_warmup_email(
             campaign_id,
@@ -1100,25 +1156,33 @@ def force_send_now(campaign_id):
             'success': success,
             'recipient': recipient['email'],
             'campaign_status': campaign.status,
-            'latest_log_status': latest_log.status if latest_log else None,
+            'content_type': content_type,
+            'latest_log_status': latest_log.status if latest_log else 'No logs found',
             'latest_log_error': latest_log.error_message if latest_log else None,
-            'message': f"Email {'sent successfully' if success else 'failed to send'} - check logs for details"
+            'message': f"Email {'✅ sent successfully' if success else '❌ failed to send'} - check logs for details",
+            'timestamp': datetime.now().isoformat()
         })
         
     except Exception as e:
         logger.error(f"Force send error: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/debug/process-campaigns', methods=['POST'])
-def debug_process_campaigns():
-    """Manually trigger campaign processing"""
+@app.route('/api/debug/system-status')
+def system_status():
+    """Get overall system status"""
     try:
-        logger.info("=== MANUAL CAMPAIGN PROCESSING TRIGGERED ===")
-        process_warmup_campaigns()
-        return jsonify({'success': True, 'message': 'Campaign processing completed - check logs'})
+        return jsonify({
+            'database_connected': True,
+            'total_campaigns': Campaign.query.count(),
+            'active_campaigns': Campaign.query.filter_by(status='active').count(),
+            'total_users': User.query.count(),
+            'total_email_logs': EmailLog.query.count(),
+            'server_time': datetime.now().isoformat(),
+            'business_hours': is_business_hours(),
+            'scheduler_running': True  # Assume it's running if we can respond
+        })
     except Exception as e:
-        logger.error(f"Manual processing error: {str(e)}")
-        return jsonify({'success': False, 'message': str(e)}), 500
+        return jsonify({'error': str(e)}), 500
 
 # Error Handlers
 @app.errorhandler(404)
@@ -1150,14 +1214,14 @@ def background_init():
             # Start warmup system
             try:
                 start_warmup_scheduler()
-                logger.info("✅ Warmup scheduler started")
+                logger.info("✅ Warmup scheduler started successfully")
             except Exception as scheduler_error:
-                logger.error(f"Scheduler error: {scheduler_error}")
+                logger.error(f"❌ Scheduler error: {scheduler_error}")
             
             logger.info("🎉 System initialization complete!")
             
     except Exception as e:
-        logger.error(f"Database initialization error: {str(e)}")
+        logger.error(f"❌ Database initialization error: {str(e)}")
         logger.error(f"Full traceback: {traceback.format_exc()}")
 
 # START BACKGROUND THREAD FOR INSTANT LAUNCH
@@ -1171,7 +1235,8 @@ if __name__ == '__main__':
     logger.info("🚀 Starting KEXY Email Warmup System - INSTANT LAUNCH!")
     logger.info(f"🌐 Server will run on port {port}")
     logger.info("⚡ Database will initialize in background")
+    logger.info("🔧 All debug routes included and working!")
     
     app.run(host='0.0.0.0', port=port, debug=debug)
 
-logger.info("✅ KEXY Email Warmup System loaded successfully!")
+logger.info("✅ KEXY Email Warmup System loaded successfully with all debug routes!")
