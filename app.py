@@ -36,20 +36,21 @@ import random
 # Initialize Flask app
 app = Flask(__name__)
 
-# Configuration
-# Configuration - EMERGENCY FIX
+# Configuration - FIXED
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///warmup.db')
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
 
-# Handle PostgreSQL URL format for Railway - AFTER configuration
-if app.config['SQLALCHEMY_DATABASE_URI'].startswith('postgresql://'):
-    app.config['SQLALCHEMY_DATABASE_URI'] = app.config['SQLALCHEMY_DATABASE_URI'].replace('postgresql://', 'postgresql+psycopg2://', 1)
+# Bulletproof database configuration
+database_url = os.environ.get('DATABASE_URL', 'sqlite:///warmup.db')
+if not database_url or database_url.strip() == '':
+    database_url = 'sqlite:///warmup.db'
 
 # Handle PostgreSQL URL format for Railway
-if app.config['SQLALCHEMY_DATABASE_URI'].startswith('postgresql://'):
-    app.config['SQLALCHEMY_DATABASE_URI'] = app.config['SQLALCHEMY_DATABASE_URI'].replace('postgresql://', 'postgresql+psycopg2://', 1)
+if database_url.startswith('postgresql://'):
+    database_url = database_url.replace('postgresql://', 'postgresql+psycopg2://', 1)
+
+app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
 
 # Initialize extensions
 db = SQLAlchemy(app)
@@ -800,5 +801,4 @@ def campaigns():
 
 # ✅ FIXED: Campaign-specific routes with proper parameter placeholders
 @app.route('/api/campaigns/<int:campaign_id>', methods=['GET', 'PUT', 'DELETE'])
-def campaign_detail(campaign_id):
-    campaign = Campaign.query.get
+def campaign
