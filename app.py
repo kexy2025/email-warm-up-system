@@ -908,6 +908,102 @@ def get_campaign_logs(campaign_id):
         campaign = Campaign.query.get(campaign_id)
         if not campaign:
             return jsonify({'error': 'Campaign not found'}), 404
+            @app.route('/api/warmup-strategies')
+def get_warmup_strategies():
+    """Get available warmup strategies"""
+    return jsonify({'strategies': WARMUP_STRATEGIES})
+
+# DEBUG ROUTES - ADD THESE
+@app.route('/api/debug/campaign/<int:campaign_id>', methods=['GET'])
+def debug_campaign(campaign_id):
+    """Debug why campaign isn't working"""
+    try:
+        campaign = Campaign.query.get(campaign_id)
+        if not campaign:
+            return jsonify({'error': 'Campaign not found'}), 404
+        
+        # Check campaign status
+        debug_info = {
+            'campaign_status': campaign.status,
+            'campaign_name': campaign.name,
+            'daily_volume': campaign.daily_volume,
+            'emails_sent_today': 0,
+            'business_hours': is_business_hours(),
+            'current_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'scheduler_running': True,
+        }
+        
+        # Check emails sent today
+        today = datetime.utcnow().date()
+        today_emails = EmailLog.query.filter(
+            EmailLog.campaign_id == campaign_id,
+            EmailLog.sent_at >= today
+        ).count()
+        
+        debug_info['emails_sent_today'] = today_emails
+        debug_info['emails_remaining'] = max(0, campaign.daily_volume - today_emails)
+        
+        # Check if any emails exist at all
+        total_emails = EmailLog.query.filter_by(campaign_id=campaign_id).count()
+        debug_info['total_emails_ever'] = total_emails
+        
+        return jsonify(debug_info)
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/debug/force-send/<int:campaign_id>', methods=['POST'])
+def force_send_now(campaign_id):
+    """Force send an email right now for testing"""
+    try:
+        campaign = Campaign.query.get(campaign_id)
+        if not campaign:
+            return jsonify({'error': 'Campaign not found'}), 404
+        
+        # Force the campaign to active if it isn't
+        if campaign.status != 'active':
+            campaign.status = 'active'
+            db.session.commit()
+        
+        # Get a recipient and send immediately
+        recipient = random.choice(WARMUP_RECIPIENTS)
+        content_type = random.choice(list(EMAIL_CONTENT_TYPES.keys()))
+        
+        logger.info(f"FORCE SENDING email to {recipient['email']} for campaign {campaign.name}")
+        
+        success = send_warmup_email(
+            campaign_id,
+            recipient['email'],
+            recipient['name'],
+            content_type
+        )
+        
+        # Check if email was logged
+        latest_log = EmailLog.query.filter_by(campaign_id=campaign_id).order_by(EmailLog.sent_at.desc()).first()
+        
+        result = {
+            'success': success,
+            'recipient': recipient['email'],
+            'campaign_status': campaign.status,
+            'latest_log': {
+                'recipient': latest_log.recipient if latest_log else None,
+                'status': latest_log.status if latest_log else None,
+                'sent_at': latest_log.sent_at.isoformat() if latest_log and latest_log.sent_at else None,
+                'error': latest_log.error_message if latest_log else None
+            } if latest_log else None
+        }
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        logger.error(f"Force send error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+# Continue with your existing Error Handlers section...
+@app.errorhandler(404)
+def not_found(error):
+    return jsonify({'error': 'Not found'}), 404
+
         
         logs = EmailLog.query.filter_by(campaign_id=campaign_id).order_by(EmailLog.sent_at.desc()).limit(100).all()
         
