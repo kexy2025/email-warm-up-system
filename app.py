@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 KEXY Email Warmup System - Complete Application
-Includes authentication, database persistence, and Amazon SES support
+24/7 OPERATION - Business Hours Restriction REMOVED
 """
 
 import os
@@ -359,7 +359,7 @@ class EmailLog(db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# Create all the functions (keeping the rest of your functions exactly the same)
+# Create all the functions
 def generate_ai_email_content(content_type, industry, recipient_name, sender_name):
     """Generate realistic email content using OpenAI"""
     try:
@@ -541,25 +541,14 @@ def calculate_campaign_progress(campaign):
     return min(int((days_elapsed / total_days) * 100), 100)
 
 def get_daily_volume_for_campaign(campaign):
-    """Calculate daily email volume - SIMPLIFIED without warmup_strategy"""
-    # Use the campaign's daily_volume directly
+    """Calculate daily email volume"""
     return campaign.daily_volume
 
-def is_business_hours():
-    """Check if current time is during business hours"""
-    now = datetime.now()
-    # Monday = 0, Sunday = 6
-    if now.weekday() >= 5:  # Weekend
-        return False
-    if now.hour < 9 or now.hour > 17:  # Outside 9 AM - 5 PM
-        return False
-    return True
-
 def process_warmup_campaigns():
-    """Process all active campaigns for email sending"""
+    """Process all active campaigns for email sending - 24/7 OPERATION (BUSINESS HOURS RESTRICTION REMOVED)"""
     try:
         active_campaigns = Campaign.query.filter_by(status='active').all()
-        logger.info(f"🔄 Processing {len(active_campaigns)} active campaigns")
+        logger.info(f"🔄 [24/7 MODE] Processing {len(active_campaigns)} active campaigns")
         
         for campaign in active_campaigns:
             daily_volume = get_daily_volume_for_campaign(campaign)
@@ -592,7 +581,7 @@ def process_warmup_campaigns():
                     )
                     logger.info(f"📨 Email to {recipient['email']}: {'✅ SUCCESS' if success else '❌ FAILED'}")
                     
-                    # Small delay between emails
+                    # Delay between emails (KEPT ORIGINAL 5-10 seconds for safety)
                     time.sleep(random.uniform(5, 10))
                 
                 logger.info(f"✅ Sent {len(recipients)} warmup emails for campaign '{campaign.name}'")
@@ -604,14 +593,14 @@ def process_warmup_campaigns():
         logger.error(f"Full traceback: {traceback.format_exc()}")
 
 def start_warmup_scheduler():
-    """Start the background email scheduler with enhanced monitoring"""
+    """Start the background email scheduler - 24/7 OPERATION WITH FASTER FREQUENCY"""
     def run_scheduler():
-        logger.info("🚀 Warmup scheduler thread started")
+        logger.info("🚀 Warmup scheduler thread started - 24/7 MODE")
         
-        # Schedule email sending every 5 minutes for testing
-        schedule.every(5).minutes.do(process_warmup_campaigns)
+        # Schedule email sending every 2 minutes for faster testing (CHANGED FROM 5 MINUTES)
+        schedule.every(2).minutes.do(process_warmup_campaigns)
         
-        # Optional: Add a daily summary at 6 PM
+        # Daily summary at 6 PM
         schedule.every().day.at("18:00").do(log_daily_summary)
         
         # Manual test run on startup (after 30 seconds)
@@ -636,7 +625,7 @@ def start_warmup_scheduler():
     # Start scheduler in background thread
     scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
     scheduler_thread.start()
-    logger.info("⏰ Warmup scheduler started - checking every 5 minutes")
+    logger.info("⏰ Warmup scheduler started - 24/7 MODE, checking every 2 minutes")
 
 def log_daily_summary():
     """Log a daily summary of campaign activity"""
@@ -746,10 +735,9 @@ def index():
         return render_template('dashboard.html')
     except Exception as e:
         logger.error(f"Error in index route: {str(e)}")
-        # Return a simple working page instead of error
         return """
         <html><body>
-        <h1>🚀 KEXY Email Warmup System</h1>
+        <h1>🚀 KEXY Email Warmup System - 24/7 MODE</h1>
         <p>System is starting up...</p>
         <p><a href="/dashboard">Go to Dashboard</a></p>
         <script>setTimeout(() => window.location.reload(), 3000);</script>
@@ -1065,10 +1053,10 @@ def get_warmup_strategies():
     """Get available warmup strategies"""
     return jsonify({'strategies': WARMUP_STRATEGIES})
 
-# 🚨 CRITICAL DEBUG ROUTES - THESE WERE MISSING! 🚨
+# 🚨 CRITICAL DEBUG ROUTES - NOW INCLUDED! 🚨
 @app.route('/api/debug/campaign/<int:campaign_id>')
 def debug_campaign(campaign_id):
-    """Debug why campaign isn't working - THIS WAS MISSING!"""
+    """Debug why campaign isn't working"""
     try:
         campaign = Campaign.query.get(campaign_id)
         if not campaign:
@@ -1088,13 +1076,14 @@ def debug_campaign(campaign_id):
             'daily_volume': campaign.daily_volume,
             'emails_sent_today': today_emails,
             'total_emails_ever': total_emails,
-            'business_hours': is_business_hours(),
+            'business_hours_restriction': 'REMOVED - 24/7 MODE',
             'current_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             'smtp_host': campaign.smtp_host,
             'smtp_username': campaign.smtp_username,
             'provider': campaign.provider,
             'created_by_user_id': campaign.user_id,
-            'last_updated': campaign.updated_at.isoformat() if campaign.updated_at else None
+            'last_updated': campaign.updated_at.isoformat() if campaign.updated_at else None,
+            'scheduler_frequency': 'Every 2 minutes'
         })
         
     except Exception as e:
@@ -1103,9 +1092,9 @@ def debug_campaign(campaign_id):
 
 @app.route('/api/debug/process-campaigns', methods=['POST'])
 def debug_process_campaigns():
-    """Manually trigger campaign processing - THIS WAS MISSING!"""
+    """Manually trigger campaign processing"""
     try:
-        logger.info("🔧 === MANUAL CAMPAIGN PROCESSING TRIGGERED ===")
+        logger.info("🔧 === MANUAL CAMPAIGN PROCESSING TRIGGERED (24/7 MODE) ===")
         process_warmup_campaigns()
         
         # Get some stats to return
@@ -1115,10 +1104,11 @@ def debug_process_campaigns():
         
         return jsonify({
             'success': True, 
-            'message': 'Campaign processing completed - check logs',
+            'message': 'Campaign processing completed - check logs (24/7 mode active)',
             'active_campaigns': active_campaigns,
             'emails_sent_today': today_emails,
-            'timestamp': datetime.now().isoformat()
+            'timestamp': datetime.now().isoformat(),
+            'business_hours_restriction': 'REMOVED'
         })
     except Exception as e:
         logger.error(f"Manual processing error: {str(e)}")
@@ -1140,7 +1130,7 @@ def force_send_now(campaign_id):
         recipient = random.choice(WARMUP_RECIPIENTS)
         content_type = random.choice(list(EMAIL_CONTENT_TYPES.keys()))
         
-        logger.info(f"🚀 FORCE SENDING email to {recipient['email']} for campaign {campaign.name}")
+        logger.info(f"🚀 FORCE SENDING email to {recipient['email']} for campaign {campaign.name} (24/7 MODE)")
         
         success = send_warmup_email(
             campaign_id,
@@ -1160,7 +1150,8 @@ def force_send_now(campaign_id):
             'latest_log_status': latest_log.status if latest_log else 'No logs found',
             'latest_log_error': latest_log.error_message if latest_log else None,
             'message': f"Email {'✅ sent successfully' if success else '❌ failed to send'} - check logs for details",
-            'timestamp': datetime.now().isoformat()
+            'timestamp': datetime.now().isoformat(),
+            'mode': '24/7 OPERATION'
         })
         
     except Exception as e:
@@ -1178,8 +1169,10 @@ def system_status():
             'total_users': User.query.count(),
             'total_email_logs': EmailLog.query.count(),
             'server_time': datetime.now().isoformat(),
-            'business_hours': is_business_hours(),
-            'scheduler_running': True  # Assume it's running if we can respond
+            'business_hours_restriction': 'REMOVED - 24/7 MODE',
+            'scheduler_frequency': 'Every 2 minutes',
+            'scheduler_running': True,
+            'mode': '24/7 OPERATION'
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -1214,11 +1207,11 @@ def background_init():
             # Start warmup system
             try:
                 start_warmup_scheduler()
-                logger.info("✅ Warmup scheduler started successfully")
+                logger.info("✅ Warmup scheduler started successfully (24/7 MODE)")
             except Exception as scheduler_error:
                 logger.error(f"❌ Scheduler error: {scheduler_error}")
             
-            logger.info("🎉 System initialization complete!")
+            logger.info("🎉 System initialization complete - 24/7 OPERATION ACTIVE!")
             
     except Exception as e:
         logger.error(f"❌ Database initialization error: {str(e)}")
@@ -1232,11 +1225,13 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     debug = os.environ.get('FLASK_ENV') == 'development'
     
-    logger.info("🚀 Starting KEXY Email Warmup System - INSTANT LAUNCH!")
+    logger.info("🚀 Starting KEXY Email Warmup System - 24/7 MODE!")
     logger.info(f"🌐 Server will run on port {port}")
     logger.info("⚡ Database will initialize in background")
     logger.info("🔧 All debug routes included and working!")
+    logger.info("⏰ Business hours restriction REMOVED - emails send 24/7!")
+    logger.info("🚀 Scheduler frequency: Every 2 minutes!")
     
     app.run(host='0.0.0.0', port=port, debug=debug)
 
-logger.info("✅ KEXY Email Warmup System loaded successfully with all debug routes!")
+logger.info("✅ KEXY Email Warmup System loaded successfully - 24/7 OPERATION READY!")
