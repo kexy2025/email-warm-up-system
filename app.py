@@ -801,4 +801,229 @@ def campaigns():
 
 # ✅ FIXED: Campaign-specific routes with proper parameter placeholders
 @app.route('/api/campaigns/<int:campaign_id>', methods=['GET', 'PUT', 'DELETE'])
-def campaign
+def campaign_detail(campaign_id):
+    campaign = Campaign.query.get(campaign_id)
+    if not campaign:
+        return jsonify({'error': 'Campaign not found'}), 404
+
+    if request.method == 'GET':
+        return jsonify(campaign.to_dict())
+
+    elif request.method == 'PUT':
+        try:
+            data = request.get_json()
+            
+            # Update allowed fields
+            updateable_fields = ['name', 'daily_volume', 'warmup_days', 'industry']
+            for field in updateable_fields:
+                if field in data:
+                    setattr(campaign, field, data[field])
+
+            campaign.updated_at = datetime.utcnow()
+            db.session.commit()
+
+            return jsonify({'success': True, 'message': 'Campaign updated', 'campaign': campaign.to_dict()})
+
+        except Exception as e:
+            logger.error(f"Campaign update error: {str(e)}")
+            db.session.rollback()
+            return jsonify({'success': False, 'message': 'Failed to update campaign'}), 500
+
+    elif request.method == 'DELETE':
+        try:
+            db.session.delete(campaign)
+            db.session.commit()
+            return jsonify({'success': True, 'message': 'Campaign deleted'})
+
+        except Exception as e:
+            logger.error(f"Campaign deletion error: {str(e)}")
+            db.session.rollback()
+            return jsonify({'success': False, 'message': 'Failed to delete campaign'}), 500
+
+@app.route('/api/campaigns/<int:campaign_id>/start', methods=['POST'])
+def start_campaign(campaign_id):
+    try:
+        logger.info(f"Starting campaign {campaign_id}")
+        campaign = Campaign.query.get(campaign_id)
+        
+        if not campaign:
+            logger.error(f"Campaign {campaign_id} not found")
+            return jsonify({'success': False, 'message': 'Campaign not found'}), 404
+
+        campaign.status = 'active'
+        campaign.updated_at = datetime.utcnow()
+        db.session.commit()
+        
+        logger.info(f"Campaign {campaign_id} started successfully")
+        return jsonify({'success': True, 'message': 'Campaign started successfully'})
+
+    except Exception as e:
+        logger.error(f"Error starting campaign {campaign_id}: {str(e)}")
+        db.session.rollback()
+        return jsonify({'success': False, 'message': f'Error: {str(e)}'}), 500
+
+@app.route('/api/campaigns/<int:campaign_id>/pause', methods=['POST'])
+def pause_campaign(campaign_id):
+    try:
+        campaign = Campaign.query.get(campaign_id)
+        if not campaign:
+            return jsonify({'error': 'Campaign not found'}), 404
+
+        campaign.status = 'paused'
+        campaign.updated_at = datetime.utcnow()
+        db.session.commit()
+        
+        return jsonify({'success': True, 'message': 'Campaign paused'})
+
+    except Exception as e:
+        logger.error(f"Campaign pause error: {str(e)}")
+        db.session.rollback()
+        return jsonify({'success': False, 'message': 'Failed to pause campaign'}), 500
+
+@app.route('/api/campaigns/<int:campaign_id>/logs')
+def get_campaign_logs(campaign_id):
+    try:
+        campaign = Campaign.query.get(campaign_id)
+        if not campaign:
+            return jsonify({'error': 'Campaign not found'}), 404
+        
+        logs = EmailLog.query.filter_by(campaign_id=campaign_id).order_by(EmailLog.sent_at.desc()).limit(100).all()
+        
+        log_data = []
+        for log in logs:
+            log_data.append({
+                'id': log.id,
+                'recipient': log.recipient,
+                'subject': log.subject,
+                'status': log.status,
+                'sent_at': log.sent_at.isoformat() if log.sent_at else None,
+                'error_message': log.error_message
+            })
+        
+        return jsonify({'logs': log_data})
+        
+    except Exception as e:
+        logger.error(f"Error fetching campaign logs: {str(e)}")
+        return jsonify({'error': 'Failed to fetch logs'}), 500
+
+@app.route('/api/campaigns/<int:campaign_id>/stats')
+def get_campaign_stats(campaign_id):
+    try:
+        campaign = Campaign.query.get(campaign_id)
+        if not campaign:
+            return jsonify({'error': 'Campaign not found'}), 404
+        
+        # Calculate stats
+        total_emails = EmailLog.query.filter_by(campaign_id=campaign_id).count()
+        sent_emails = EmailLog.query.filter_by(campaign_id=campaign_id, status='sent').count()
+        failed_emails = EmailLog.query.filter_by(campaign_id=campaign_id, status='failed').count()
+        
+        success_rate = (sent_emails / total_emails * 100) if total_emails > 0 else 0
+        
+        # Today's stats
+        today = datetime.utcnow().date()
+        today_emails = EmailLog.query.filter(
+            EmailLog.campaign_id == campaign_id,
+            EmailLog.sent_at >= today,
+            EmailLog.status == 'sent'
+        ).count()
+        
+        return jsonify({
+            'campaign_id': campaign_id,
+            'total_emails': total_emails,
+            'sent_emails': sent_emails,
+            'failed_emails': failed_emails,
+            'success_rate': round(success_rate, 1),
+            'today_emails': today_emails,
+            'progress': campaign.progress,
+            'daily_target': get_daily_volume_for_campaign(campaign)
+        })
+        
+    except Exception as e:
+        logger.error(f"Error fetching campaign stats: {str(e)}")
+        return jsonify({'error': 'Failed to fetch stats'}), 500
+
+@app.route('/api/dashboard-stats')
+def dashboard_stats():
+    try:
+        all_campaigns = Campaign.query.all()
+        
+        total_campaigns = len(all_campaigns)
+        active_campaigns = len([c for c in all_campaigns if c.status == 'active'])
+        total_emails_sent = sum(c.emails_sent for c in all_campaigns)
+        avg_success_rate = sum(c.success_rate for c in all_campaigns) / total_campaigns if total_campaigns > 0 else 0
+
+        return jsonify({
+            'total_campaigns': total_campaigns,
+            'active_campaigns': active_campaigns,
+            'emails_sent': total_emails_sent,
+            'success_rate': round(avg_success_rate, 1)
+        })
+
+    except Exception as e:
+        logger.error(f"Dashboard stats error: {str(e)}")
+        return jsonify({'error': 'Failed to load stats'}), 500
+
+@app.route('/api/providers')
+def get_providers():
+    """Get available SMTP providers"""
+    return jsonify({
+        'providers': {
+            key: {
+                'name': key.replace('_', ' ').title(),
+                'help_text': config.get('help_text', ''),
+                'requires_custom_host': key in ['custom_smtp', 'custom_ses']
+            }
+            for key, config in SMTP_PROVIDERS.items()
+        }
+    })
+
+@app.route('/api/warmup-strategies')
+def get_warmup_strategies():
+    """Get available warmup strategies"""
+    return jsonify({'strategies': WARMUP_STRATEGIES})
+
+# Error Handlers
+@app.errorhandler(404)
+def not_found(error):
+    return jsonify({'error': 'Not found'}), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    logger.error(f"Internal error: {str(error)}")
+    db.session.rollback()
+    return jsonify({'error': 'Internal server error'}), 500
+
+@app.errorhandler(403)
+def forbidden(error):
+    return jsonify({'error': 'Access forbidden'}), 403
+
+# Initialize database
+def create_tables():
+    """Create database tables"""
+    try:
+        with app.app_context():
+            db.create_all()
+            create_default_user()
+            initialize_warmup_system()
+            logger.info("Database tables created successfully")
+    except Exception as e:
+        logger.error(f"Database initialization error: {str(e)}")
+
+# Initialize warmup system
+def initialize_warmup_system():
+    """Initialize the warmup system"""
+    try:
+        start_warmup_scheduler()
+        logger.info("Warmup system initialized successfully")
+    except Exception as e:
+        logger.error(f"Error initializing warmup system: {str(e)}")
+
+# Application startup - FIXED: Port changed to 8080 for Railway
+if __name__ == '__main__':
+    create_tables()
+    port = int(os.environ.get('PORT', 8080))  # Changed from 5000 to 8080
+    debug = os.environ.get('FLASK_ENV') == 'development'
+    app.run(host='0.0.0.0', port=port, debug=debug)
+
+logger.info("KEXY Email Warmup System with AI Engine loaded successfully!")
