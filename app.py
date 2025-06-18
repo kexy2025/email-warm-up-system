@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-KEXY Email Warmup System - OPTIMIZED FOR INSTANT LAUNCH
+KEXY Email Warmup System - COMPLETE WORKING VERSION
 """
 
 import os
@@ -33,20 +33,19 @@ import time
 import threading
 import random
 
-# INSTANT STARTUP - Initialize Flask app
+# Initialize Flask app
 app = Flask(__name__)
 
-# FAST LOGGING SETUP
+# Configuration
 logging.basicConfig(level=logging.INFO, format='%(levelname)s:%(message)s')
 logger = logging.getLogger(__name__)
 
-# INSTANT CONFIGURATION
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///warmup.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
 
-# INSTANT EXTENSIONS INIT
+# Initialize extensions
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 login_manager = LoginManager()
@@ -54,61 +53,21 @@ login_manager.init_app(app)
 login_manager.login_view = 'login'
 CORS(app)
 
-# FAST ENCRYPTION SETUP
+# Encryption setup
 encryption_key = Fernet.generate_key()
 cipher_suite = Fernet(encryption_key)
 
 # Initialize OpenAI
 openai.api_key = os.environ.get('OPENAI_API_KEY')
 
-# SMTP Provider Configurations
+# SMTP Providers
 SMTP_PROVIDERS = {
-    'gmail': {
-        'host': 'smtp.gmail.com',
-        'port': 587,
-        'use_tls': True,
-        'requires_auth': True,
-        'help_text': 'For Gmail: Enable 2-Factor Authentication and generate an App Password'
-    },
-    'outlook': {
-        'host': 'smtp-mail.outlook.com',
-        'port': 587,
-        'use_tls': True,
-        'requires_auth': True,
-        'help_text': 'For Outlook: Enable 2-Factor Authentication and generate an App Password'
-    },
-    'yahoo': {
-        'host': 'smtp.mail.yahoo.com',
-        'port': 587,
-        'use_tls': True,
-        'requires_auth': True,
-        'help_text': 'For Yahoo: Enable 2-Factor Authentication and generate an App Password'
-    },
-    'amazon_ses_us_east_1': {
-        'host': 'email-smtp.us-east-1.amazonaws.com',
-        'port': 587,
-        'use_tls': True,
-        'requires_auth': True,
-        'region': 'us-east-1',
-        'service': 'ses',
-        'help_text': 'Amazon SES (US East 1): Use IAM Access Key ID as username and Secret Access Key as password'
-    },
-    'amazon_ses_us_west_2': {
-        'host': 'email-smtp.us-west-2.amazonaws.com',
-        'port': 587,
-        'use_tls': True,
-        'requires_auth': True,
-        'region': 'us-west-2',
-        'service': 'ses',
-        'help_text': 'Amazon SES (US West 2): Use IAM Access Key ID as username and Secret Access Key as password'
-    },
-    'custom_smtp': {
-        'host': '',
-        'port': 587,
-        'use_tls': True,
-        'requires_auth': True,
-        'help_text': 'Custom SMTP: Enter your server details manually'
-    }
+    'gmail': {'host': 'smtp.gmail.com', 'port': 587, 'use_tls': True, 'requires_auth': True, 'help_text': 'For Gmail: Enable 2-Factor Authentication and generate an App Password'},
+    'outlook': {'host': 'smtp-mail.outlook.com', 'port': 587, 'use_tls': True, 'requires_auth': True, 'help_text': 'For Outlook: Enable 2-Factor Authentication and generate an App Password'},
+    'yahoo': {'host': 'smtp.mail.yahoo.com', 'port': 587, 'use_tls': True, 'requires_auth': True, 'help_text': 'For Yahoo: Enable 2-Factor Authentication and generate an App Password'},
+    'amazon_ses_us_east_1': {'host': 'email-smtp.us-east-1.amazonaws.com', 'port': 587, 'use_tls': True, 'requires_auth': True, 'region': 'us-east-1', 'service': 'ses', 'help_text': 'Amazon SES (US East 1): Use IAM Access Key ID as username and Secret Access Key as password'},
+    'amazon_ses_us_west_2': {'host': 'email-smtp.us-west-2.amazonaws.com', 'port': 587, 'use_tls': True, 'requires_auth': True, 'region': 'us-west-2', 'service': 'ses', 'help_text': 'Amazon SES (US West 2): Use IAM Access Key ID as username and Secret Access Key as password'},
+    'custom_smtp': {'host': '', 'port': 587, 'use_tls': True, 'requires_auth': True, 'help_text': 'Custom SMTP: Enter your server details manually'}
 }
 
 WARMUP_STRATEGIES = {
@@ -148,7 +107,7 @@ WARMUP_RECIPIENTS = [
     {"email": "james.realestate@property-pros.com", "name": "James Miller", "industry": "real_estate"}
 ]
 
-# SIMPLE DATABASE MODELS
+# Database Models
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
@@ -230,7 +189,7 @@ class EmailLog(db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# FAST UTILITY FUNCTIONS
+# Utility Functions
 def generate_fallback_content(content_type, industry, recipient_name, sender_name):
     fallback_content = {
         'follow_up': f"I've been thinking about our conversation regarding {industry} trends.",
@@ -325,11 +284,74 @@ def validate_smtp_connection(provider, email, username, password, smtp_host=None
         server.login(username, password)
         server.quit()
         return True, "Connection successful"
-
     except Exception as e:
         return False, f"Connection failed: {str(e)}"
 
-# SIMPLE ROUTES
+def calculate_campaign_progress(campaign):
+    days_elapsed = (datetime.utcnow() - campaign.created_at).days
+    total_days = campaign.warmup_days
+    return min(int((days_elapsed / total_days) * 100), 100)
+
+def get_daily_volume_for_campaign(campaign):
+    return campaign.daily_volume
+
+def is_business_hours():
+    now = datetime.now()
+    if now.weekday() >= 5:  # Weekend
+        return False
+    if now.hour < 9 or now.hour > 17:  # Outside 9 AM - 5 PM
+        return False
+    return True
+
+def process_warmup_campaigns():
+    try:
+        active_campaigns = Campaign.query.filter_by(status='active').all()
+        logger.info(f"Found {len(active_campaigns)} active campaigns")
+        
+        for campaign in active_campaigns:
+            daily_volume = get_daily_volume_for_campaign(campaign)
+            
+            today = datetime.utcnow().date()
+            today_emails = EmailLog.query.filter(
+                EmailLog.campaign_id == campaign.id,
+                EmailLog.sent_at >= today,
+                EmailLog.status == 'sent'
+            ).count()
+            
+            emails_to_send = max(0, daily_volume - today_emails)
+            logger.info(f"Campaign {campaign.name}: {emails_to_send} emails to send today")
+            
+            if emails_to_send > 0:
+                recipients = random.sample(WARMUP_RECIPIENTS, min(emails_to_send, len(WARMUP_RECIPIENTS)))
+                
+                for recipient in recipients:
+                    content_type = random.choice(list(EMAIL_CONTENT_TYPES.keys()))
+                    
+                    success = send_warmup_email(
+                        campaign.id, recipient['email'], recipient['name'], content_type
+                    )
+                    logger.info(f"Email to {recipient['email']}: {'SUCCESS' if success else 'FAILED'}")
+                    
+                    time.sleep(random.uniform(5, 10))
+                
+                logger.info(f"Sent {len(recipients)} warmup emails for campaign {campaign.name}")
+    
+    except Exception as e:
+        logger.error(f"Error processing warmup campaigns: {str(e)}")
+
+def start_warmup_scheduler():
+    def run_scheduler():
+        schedule.every(5).minutes.do(process_warmup_campaigns)
+        
+        while True:
+            schedule.run_pending()
+            time.sleep(60)
+    
+    scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
+    scheduler_thread.start()
+    logger.info("Warmup scheduler started - checking every 5 minutes")
+
+# Routes
 @app.route('/')
 def index():
     try:
@@ -338,23 +360,62 @@ def index():
             login_user(admin_user)
     except:
         pass
+    
     return """
-    <html><head><title>KEXY Email Warmup</title></head><body>
+    <!DOCTYPE html>
+    <html>
+    <head><title>KEXY Email Warmup</title>
+    <style>body{font-family:Arial,sans-serif;margin:40px;line-height:1.6}.container{max-width:800px;margin:0 auto}.status{background:#d4edda;border:1px solid #c3e6cb;color:#155724;padding:15px;border-radius:5px;margin:20px 0}.nav a{background:#007bff;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;margin:10px}</style>
+    </head>
+    <body>
+    <div class="container">
     <h1>🚀 KEXY Email Warmup System</h1>
-    <p>✅ System is running and ready!</p>
-    <p><a href="/dashboard">Go to Dashboard</a></p>
-    <p><a href="/api/campaigns">View Campaigns API</a></p>
-    </body></html>
+    <div class="status">✅ System is running and ready!</div>
+    <div class="nav">
+    <a href="/dashboard">📊 Dashboard</a>
+    <a href="/api/campaigns">📧 Campaigns API</a>
+    <a href="/login">🔐 Login</a>
+    </div>
+    </div>
+    </body>
+    </html>
     """
 
 @app.route('/dashboard')
 def dashboard():
-    return """
-    <html><head><title>Dashboard</title></head><body>
-    <h1>📊 Dashboard</h1>
-    <p>Email warmup system dashboard</p>
-    <p><a href="/">Back to Home</a></p>
-    </body></html>
+    try:
+        campaigns = Campaign.query.all()
+        total = len(campaigns)
+        active = len([c for c in campaigns if c.status == 'active'])
+        total_emails = sum(c.emails_sent for c in campaigns) if campaigns else 0
+    except:
+        total = active = total_emails = 0
+    
+    return f"""
+    <!DOCTYPE html>
+    <html>
+    <head><title>KEXY Dashboard</title>
+    <style>body{{font-family:Arial,sans-serif;margin:0;background:#f8f9fa}}.container{{max-width:1200px;margin:0 auto;padding:20px}}.card{{background:white;padding:20px;border-radius:8px;margin:20px 0;box-shadow:0 2px 4px rgba(0,0,0,0.1)}}.stats{{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:20px}}.stat{{text-align:center;padding:20px}}.stat-number{{font-size:2em;font-weight:bold;color:#007bff}}.btn{{background:#007bff;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;margin:5px;display:inline-block}}</style>
+    </head>
+    <body>
+    <div class="container">
+    <div class="card"><h1>📊 KEXY Dashboard</h1></div>
+    <div class="stats">
+    <div class="card stat"><div class="stat-number">{total}</div><div>Total Campaigns</div></div>
+    <div class="card stat"><div class="stat-number">{active}</div><div>Active Campaigns</div></div>
+    <div class="card stat"><div class="stat-number">{total_emails}</div><div>Emails Sent</div></div>
+    <div class="card stat"><div class="stat-number">✅</div><div>System Status</div></div>
+    </div>
+    <div class="card">
+    <h3>Quick Actions</h3>
+    <a href="/api/campaigns" class="btn">📧 View Campaigns</a>
+    <a href="/api/providers" class="btn">🔧 SMTP Providers</a>
+    <a href="/api/dashboard-stats" class="btn">📊 Dashboard Stats</a>
+    <a href="/" class="btn">🏠 Home</a>
+    </div>
+    </div>
+    </body>
+    </html>
     """
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -370,7 +431,7 @@ def login():
                 login_user(user)
                 if request.is_json:
                     return jsonify({'success': True, 'message': 'Login successful'})
-                return redirect(url_for('index'))
+                return redirect(url_for('dashboard'))
             else:
                 if request.is_json:
                     return jsonify({'success': False, 'message': 'Invalid credentials'}), 401
@@ -378,17 +439,27 @@ def login():
             logger.error(f"Login error: {str(e)}")
     
     return """
-    <html><head><title>Login</title></head><body>
+    <!DOCTYPE html>
+    <html>
+    <head><title>Login</title>
+    <style>body{font-family:Arial,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#f8f9fa}.login{background:white;padding:40px;border-radius:8px;box-shadow:0 4px 8px rgba(0,0,0,0.1);max-width:400px}input{width:100%;padding:10px;margin:10px 0;border:1px solid #ddd;border-radius:4px;box-sizing:border-box}.btn{background:#007bff;color:white;padding:12px;border:none;border-radius:4px;width:100%;cursor:pointer}</style>
+    </head>
+    <body>
+    <div class="login">
     <h1>🔐 Login</h1>
+    <p><strong>Default:</strong> admin / admin123</p>
     <form method="post">
-    <p>Username: <input type="text" name="username" value="admin"></p>
-    <p>Password: <input type="password" name="password" value="admin123"></p>
-    <p><input type="submit" value="Login"></p>
+    <input type="text" name="username" placeholder="Username" value="admin">
+    <input type="password" name="password" placeholder="Password" value="admin123">
+    <button type="submit" class="btn">Login</button>
     </form>
-    </body></html>
+    <p><a href="/">← Back to Home</a></p>
+    </div>
+    </body>
+    </html>
     """
 
-# API ROUTES
+# API Routes
 @app.route('/api/campaigns', methods=['GET', 'POST'])
 def campaigns():
     if request.method == 'GET':
@@ -396,11 +467,12 @@ def campaigns():
             all_campaigns = Campaign.query.all()
             return jsonify([campaign.to_dict() for campaign in all_campaigns])
         except Exception as e:
-            return jsonify([])
+            return jsonify({'error': str(e), 'campaigns': []})
 
     elif request.method == 'POST':
         try:
             data = request.get_json()
+            
             required_fields = ['name', 'email', 'provider', 'username', 'password', 'industry']
             if not all(field in data for field in required_fields):
                 return jsonify({'success': False, 'message': 'Missing required fields'}), 400
@@ -434,118 +506,8 @@ def campaigns():
 
         except Exception as e:
             logger.error(f"Campaign creation error: {str(e)}")
-            return jsonify({'success': False, 'message': 'Failed to create campaign'}), 500
-
-@app.route('/api/campaigns/<int:campaign_id>/start', methods=['POST'])
-def start_campaign(campaign_id):
-    try:
-        campaign = Campaign.query.get(campaign_id)
-        if not campaign:
-            return jsonify({'success': False, 'message': 'Campaign not found'}), 404
-        
-        campaign.status = 'active'
-        campaign.updated_at = datetime.utcnow()
-        db.session.commit()
-        
-        return jsonify({'success': True, 'message': 'Campaign started successfully'})
-    except Exception as e:
-        return jsonify({'success': False, 'message': f'Error: {str(e)}'}), 500
-
-@app.route('/api/campaigns/<int:campaign_id>/pause', methods=['POST'])
-def pause_campaign(campaign_id):
-    try:
-        campaign = Campaign.query.get(campaign_id)
-        if not campaign:
-            return jsonify({'error': 'Campaign not found'}), 404
-        
-        campaign.status = 'paused'
-        db.session.commit()
-        return jsonify({'success': True, 'message': 'Campaign paused'})
-    except Exception as e:
-        return jsonify({'success': False, 'message': 'Failed to pause campaign'}), 500
-
-@app.route('/api/debug/force-send/<int:campaign_id>', methods=['POST'])
-def force_send_now(campaign_id):
-    try:
-        campaign = Campaign.query.get(campaign_id)
-        if not campaign:
-            return jsonify({'error': 'Campaign not found'}), 404
-        
-        if campaign.status != 'active':
-            campaign.status = 'active'
-            db.session.commit()
-        
-        recipient = random.choice(WARMUP_RECIPIENTS)
-        content_type = random.choice(list(EMAIL_CONTENT_TYPES.keys()))
-        
-        success = send_warmup_email(campaign_id, recipient['email'], recipient['name'], content_type)
-        
-        return jsonify({
-            'success': success,
-            'recipient': recipient['email'],
-            'message': f"Email {'sent successfully' if success else 'failed to send'}"
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/providers')
-def get_providers():
-    return jsonify({'providers': {key: {'name': key.replace('_', ' ').title(), 'help_text': config.get('help_text', '')} for key, config in SMTP_PROVIDERS.items()}})
-
-# BACKGROUND INITIALIZATION - RUNS AFTER SERVER STARTS
-def background_init():
-    """Initialize database in background after server starts"""
-    time.sleep(2)  # Wait for server to start
-    try:
-        with app.app_context():
-            db.create_all()
-            if User.query.count() == 0:
-                admin = User(username='admin', email='admin@example.com')
-                admin.set_password('admin123')
-                db.session.add(admin)
-                db.session.commit()
-                logger.info("✅ Default admin user created")
-            logger.info("✅ Database initialized in background")
-    except Exception as e:
-        logger.error(f"Background init error: {str(e)}")
-
-# START BACKGROUND THREAD
-threading.Thread(target=background_init, daemon=True).start()
-
-# Error Handlers - SIMPLE
-@app.errorhandler(404)
-def not_found(error):
-    return jsonify({'error': 'Not found'}), 404
-
-@app.errorhandler(500)
-def internal_error(error):
-    return jsonify({'error': 'Internal server error'}), 500
-
-# Additional API Routes for full functionality
-@app.route('/api/validate-smtp', methods=['POST'])
-def validate_smtp():
-    try:
-        data = request.get_json()
-        provider = data.get('provider')
-        email = data.get('email')
-        username = data.get('username')
-        password = data.get('password')
-        smtp_host = data.get('smtp_host')
-        smtp_port = data.get('smtp_port', 587)
-        use_tls = data.get('use_tls', True)
-
-        if not all([provider, email, username, password]):
-            return jsonify({'success': False, 'message': 'Missing required fields'}), 400
-
-        success, message = validate_smtp_connection(
-            provider, email, username, password, smtp_host, smtp_port, use_tls
-        )
-
-        return jsonify({'success': success, 'message': message})
-
-    except Exception as e:
-        logger.error(f"SMTP validation error: {str(e)}")
-        return jsonify({'success': False, 'message': 'Validation failed'}), 500
+            db.session.rollback()
+            return jsonify({'success': False, 'message': f'Failed to create campaign: {str(e)}'}), 500
 
 @app.route('/api/campaigns/<int:campaign_id>', methods=['GET', 'PUT', 'DELETE'])
 def campaign_detail(campaign_id):
@@ -574,7 +536,39 @@ def campaign_detail(campaign_id):
 
     except Exception as e:
         logger.error(f"Campaign detail error: {str(e)}")
-        return jsonify({'success': False, 'message': 'Operation failed'}), 500
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/campaigns/<int:campaign_id>/start', methods=['POST'])
+def start_campaign(campaign_id):
+    try:
+        campaign = Campaign.query.get(campaign_id)
+        if not campaign:
+            return jsonify({'success': False, 'message': 'Campaign not found'}), 404
+        
+        campaign.status = 'active'
+        campaign.updated_at = datetime.utcnow()
+        db.session.commit()
+        
+        logger.info(f"Campaign {campaign_id} started successfully")
+        return jsonify({'success': True, 'message': 'Campaign started successfully'})
+    except Exception as e:
+        logger.error(f"Error starting campaign {campaign_id}: {str(e)}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/campaigns/<int:campaign_id>/pause', methods=['POST'])
+def pause_campaign(campaign_id):
+    try:
+        campaign = Campaign.query.get(campaign_id)
+        if not campaign:
+            return jsonify({'error': 'Campaign not found'}), 404
+        
+        campaign.status = 'paused'
+        campaign.updated_at = datetime.utcnow()
+        db.session.commit()
+        return jsonify({'success': True, 'message': 'Campaign paused'})
+    except Exception as e:
+        logger.error(f"Campaign pause error: {str(e)}")
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 @app.route('/api/campaigns/<int:campaign_id>/logs')
 def get_campaign_logs(campaign_id):
@@ -600,7 +594,7 @@ def get_campaign_logs(campaign_id):
         
     except Exception as e:
         logger.error(f"Error fetching campaign logs: {str(e)}")
-        return jsonify({'error': 'Failed to fetch logs'}), 500
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/campaigns/<int:campaign_id>/stats')
 def get_campaign_stats(campaign_id):
@@ -630,12 +624,12 @@ def get_campaign_stats(campaign_id):
             'success_rate': round(success_rate, 1),
             'today_emails': today_emails,
             'progress': campaign.progress,
-            'daily_target': campaign.daily_volume
+            'daily_target': get_daily_volume_for_campaign(campaign)
         })
         
     except Exception as e:
         logger.error(f"Error fetching campaign stats: {str(e)}")
-        return jsonify({'error': 'Failed to fetch stats'}), 500
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/dashboard-stats')
 def dashboard_stats():
@@ -656,11 +650,49 @@ def dashboard_stats():
 
     except Exception as e:
         logger.error(f"Dashboard stats error: {str(e)}")
-        return jsonify({'error': 'Failed to load stats'}), 500
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/providers')
+def get_providers():
+    return jsonify({
+        'providers': {
+            key: {
+                'name': key.replace('_', ' ').title(),
+                'help_text': config.get('help_text', ''),
+                'requires_custom_host': key in ['custom_smtp', 'custom_ses']
+            }
+            for key, config in SMTP_PROVIDERS.items()
+        }
+    })
 
 @app.route('/api/warmup-strategies')
 def get_warmup_strategies():
     return jsonify({'strategies': WARMUP_STRATEGIES})
+
+@app.route('/api/validate-smtp', methods=['POST'])
+def validate_smtp():
+    try:
+        data = request.get_json()
+        provider = data.get('provider')
+        email = data.get('email')
+        username = data.get('username')
+        password = data.get('password')
+        smtp_host = data.get('smtp_host')
+        smtp_port = data.get('smtp_port', 587)
+        use_tls = data.get('use_tls', True)
+
+        if not all([provider, email, username, password]):
+            return jsonify({'success': False, 'message': 'Missing required fields'}), 400
+
+        success, message = validate_smtp_connection(
+            provider, email, username, password, smtp_host, smtp_port, use_tls
+        )
+
+        return jsonify({'success': success, 'message': message})
+
+    except Exception as e:
+        logger.error(f"SMTP validation error: {str(e)}")
+        return jsonify({'success': False, 'message': 'Validation failed'}), 500
 
 @app.route('/api/debug/campaign/<int:campaign_id>')
 def debug_campaign(campaign_id):
@@ -683,6 +715,7 @@ def debug_campaign(campaign_id):
             'daily_volume': campaign.daily_volume,
             'emails_sent_today': today_emails,
             'total_emails_ever': total_emails,
+            'business_hours': is_business_hours(),
             'current_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             'smtp_host': campaign.smtp_host,
             'smtp_username': campaign.smtp_username,
@@ -693,31 +726,55 @@ def debug_campaign(campaign_id):
         logger.error(f"Debug campaign error: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/debug/force-send/<int:campaign_id>', methods=['POST'])
+def force_send_now(campaign_id):
+    try:
+        campaign = Campaign.query.get(campaign_id)
+        if not campaign:
+            return jsonify({'error': 'Campaign not found'}), 404
+        
+        if campaign.status != 'active':
+            campaign.status = 'active'
+            db.session.commit()
+            logger.info(f"Campaign {campaign_id} activated for testing")
+        
+        recipient = random.choice(WARMUP_RECIPIENTS)
+        content_type = random.choice(list(EMAIL_CONTENT_TYPES.keys()))
+        
+        logger.info(f"FORCE SENDING email to {recipient['email']} for campaign {campaign.name}")
+        
+        success = send_warmup_email(
+            campaign_id,
+            recipient['email'],
+            recipient['name'],
+            content_type
+        )
+        
+        latest_log = EmailLog.query.filter_by(campaign_id=campaign_id).order_by(EmailLog.sent_at.desc()).first()
+        
+        return jsonify({
+            'success': success,
+            'recipient': recipient['email'],
+            'campaign_status': campaign.status,
+            'latest_log_status': latest_log.status if latest_log else None,
+            'latest_log_error': latest_log.error_message if latest_log else None,
+            'message': f"Email {'sent successfully' if success else 'failed to send'} - check logs for details"
+        })
+        
+    except Exception as e:
+        logger.error(f"Force send error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/debug/process-campaigns', methods=['POST'])
 def debug_process_campaigns():
     try:
-        # Simple campaign processing for testing
-        active_campaigns = Campaign.query.filter_by(status='active').all()
-        logger.info(f"Found {len(active_campaigns)} active campaigns")
-        
-        for campaign in active_campaigns:
-            recipient = random.choice(WARMUP_RECIPIENTS)
-            content_type = random.choice(list(EMAIL_CONTENT_TYPES.keys()))
-            
-            success = send_warmup_email(
-                campaign.id,
-                recipient['email'],
-                recipient['name'],
-                content_type
-            )
-            logger.info(f"Email to {recipient['email']}: {'SUCCESS' if success else 'FAILED'}")
-        
-        return jsonify({'success': True, 'message': f'Processed {len(active_campaigns)} campaigns'})
+        logger.info("=== MANUAL CAMPAIGN PROCESSING TRIGGERED ===")
+        process_warmup_campaigns()
+        return jsonify({'success': True, 'message': 'Campaign processing completed - check logs'})
     except Exception as e:
         logger.error(f"Manual processing error: {str(e)}")
         return jsonify({'success': False, 'message': str(e)}), 500
 
-# Health check endpoint
 @app.route('/health')
 def health_check():
     return jsonify({
@@ -727,7 +784,43 @@ def health_check():
         'database': 'connected'
     })
 
-# INSTANT SERVER START
+# Error handlers
+@app.errorhandler(404)
+def not_found(error):
+    return jsonify({'error': 'Not found'}), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    logger.error(f"Internal error: {str(error)}")
+    return jsonify({'error': 'Internal server error'}), 500
+
+@app.errorhandler(403)
+def forbidden(error):
+    return jsonify({'error': 'Access forbidden'}), 403
+
+# Background initialization
+def background_init():
+    time.sleep(2)
+    try:
+        with app.app_context():
+            db.create_all()
+            if User.query.count() == 0:
+                admin = User(username='admin', email='admin@example.com')
+                admin.set_password('admin123')
+                db.session.add(admin)
+                db.session.commit()
+                logger.info("✅ Default admin user created")
+            
+            # Start warmup scheduler
+            start_warmup_scheduler()
+            logger.info("✅ Database initialized and scheduler started")
+    except Exception as e:
+        logger.error(f"Background init error: {str(e)}")
+
+# Start background thread
+threading.Thread(target=background_init, daemon=True).start()
+
+# Application startup
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     debug = os.environ.get('FLASK_ENV') == 'development'
@@ -737,8 +830,6 @@ if __name__ == '__main__':
     logger.info("⚡ Database will initialize in background")
     logger.info("✅ System ready for immediate use!")
     
-    # INSTANT START - NO DELAYS
     app.run(host='0.0.0.0', port=port, debug=debug, threaded=True)
 
-# Final startup message
 logger.info("🎉 KEXY Email Warmup System launched successfully!")
