@@ -1131,7 +1131,6 @@ def create_tables():
         logger.error(f"Database initialization error: {str(e)}")
 
 # Initialize warmup system when app starts
-@app.before_first_request
 def initialize_warmup_system():
     """Initialize the warmup system"""
     try:
@@ -1140,6 +1139,17 @@ def initialize_warmup_system():
         logger.info("Warmup system initialized successfully")
     except Exception as e:
         logger.error(f"Error initializing warmup system: {str(e)}")
+
+# Call it in the main section
+def create_tables():
+    try:
+        with app.app_context():
+            db.create_all()
+            create_default_user()
+            initialize_warmup_system()  # ADD THIS LINE
+            logger.info("Database tables created successfully")
+    except Exception as e:
+        logger.error(f"Database initialization error: {str(e)}")
 
 # Application startup
 if __name__ == '__main__':
