@@ -520,3 +520,496 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_ENV') == 'development'
     app.run(host='0.0.0.0', port=port, debug=debug)
+
+# AI-Enhanced Email Warmup Engine - Add to existing app.py
+import openai
+import schedule
+import time
+import threading
+from datetime import datetime, timedelta
+import random
+import json
+
+# Add these environment variables to Railway
+# OPENAI_API_KEY = your-openai-api-key
+
+# Initialize OpenAI (add after other imports)
+openai.api_key = os.environ.get('OPENAI_API_KEY')
+
+# Warmup Strategies Configuration
+WARMUP_STRATEGIES = {
+    'steady': {
+        'name': 'Steady',
+        'description': 'Consistent daily volume for reliable warming',
+        'daily_volume': 10,
+        'duration_days': 30,
+        'pattern': 'consistent'
+    },
+    'progressive': {
+        'name': 'Progressive', 
+        'description': 'Gradual increase over time',
+        'start_volume': 5,
+        'end_volume': 50,
+        'duration_days': 30,
+        'pattern': 'linear_increase'
+    },
+    'aggressive': {
+        'name': 'Aggressive',
+        'description': 'Rapid volume increase for fast warming',
+        'start_volume': 10,
+        'end_volume': 100,
+        'duration_days': 14,
+        'pattern': 'exponential_increase'
+    },
+    'conservative': {
+        'name': 'Conservative',
+        'description': 'Slow and safe approach',
+        'start_volume': 3,
+        'end_volume': 25,
+        'duration_days': 45,
+        'pattern': 'gradual_increase'
+    }
+}
+
+# Email Templates and Content Types
+EMAIL_CONTENT_TYPES = {
+    'follow_up': {
+        'subject_templates': [
+            "Following up on our {topic} discussion",
+            "Quick follow-up: {topic}",
+            "Re: {topic} - Next steps"
+        ],
+        'body_template': """Hi {recipient_name},
+
+I hope this email finds you well. I wanted to follow up on our recent discussion about {topic}.
+
+{main_content}
+
+I'd love to hear your thoughts on this. Would you be available for a brief call next week to discuss further?
+
+Best regards,
+{sender_name}"""
+    },
+    'newsletter': {
+        'subject_templates': [
+            "{industry} Weekly Update - {date}",
+            "Latest {industry} Trends and Insights",
+            "Your {industry} Newsletter - Week of {date}"
+        ],
+        'body_template': """Hello {recipient_name},
+
+Welcome to this week's {industry} newsletter!
+
+{main_content}
+
+Key highlights this week:
+• Industry developments
+• Market insights
+• Upcoming events
+
+Stay tuned for more updates!
+
+Best regards,
+{sender_name}"""
+    },
+    'inquiry': {
+        'subject_templates': [
+            "Partnership opportunity in {industry}",
+            "Exploring collaboration possibilities",
+            "Business inquiry - {topic}"
+        ],
+        'body_template': """Dear {recipient_name},
+
+I hope you're doing well. I'm reaching out regarding a potential collaboration opportunity in {industry}.
+
+{main_content}
+
+I believe there could be significant mutual benefits to exploring this further. Would you be interested in a brief conversation?
+
+Looking forward to your response.
+
+Best regards,
+{sender_name}"""
+    },
+    'update': {
+        'subject_templates': [
+            "Project update: {topic}",
+            "Progress report - {topic}",
+            "Quick update on {topic}"
+        ],
+        'body_template': """Hi {recipient_name},
+
+I wanted to share a quick update on {topic}.
+
+{main_content}
+
+Please let me know if you have any questions or need additional information.
+
+Thanks,
+{sender_name}"""
+    }
+}
+
+# Warmup Recipients Pool
+WARMUP_RECIPIENTS = [
+    {"email": "sarah.marketing@business-network.com", "name": "Sarah Chen", "industry": "marketing", "responds": True},
+    {"email": "mike.tech@innovation-hub.com", "name": "Mike Rodriguez", "industry": "technology", "responds": True},
+    {"email": "anna.finance@growth-partners.com", "name": "Anna Thompson", "industry": "finance", "responds": True},
+    {"email": "david.consulting@strategy-group.com", "name": "David Kim", "industry": "consulting", "responds": True},
+    {"email": "lisa.healthcare@wellness-corp.com", "name": "Lisa Johnson", "industry": "healthcare", "responds": True},
+    {"email": "robert.education@learning-solutions.com", "name": "Robert Wilson", "industry": "education", "responds": True},
+    {"email": "emily.retail@commerce-network.com", "name": "Emily Davis", "industry": "retail", "responds": True},
+    {"email": "james.realestate@property-pros.com", "name": "James Miller", "industry": "real_estate", "responds": True}
+]
+
+# AI Content Generation Function
+def generate_ai_email_content(content_type, industry, recipient_name, sender_name):
+    """Generate realistic email content using OpenAI"""
+    try:
+        if not openai.api_key:
+            return generate_fallback_content(content_type, industry, recipient_name, sender_name)
+        
+        prompt = f"""
+        Generate a professional, realistic email for {content_type} in the {industry} industry.
+        
+        Requirements:
+        - Natural, human-like writing
+        - Industry-appropriate language
+        - 2-3 sentences for main content
+        - Professional but friendly tone
+        - Avoid obvious marketing language
+        
+        Context:
+        - Recipient: {recipient_name}
+        - Sender: {sender_name}
+        - Industry: {industry}
+        - Email type: {content_type}
+        
+        Return only the main content paragraph (no subject or full email structure).
+        """
+        
+        response = openai.Completion.create(
+            engine="text-davinci-003",
+            prompt=prompt,
+            max_tokens=150,
+            temperature=0.7
+        )
+        
+        return response.choices[0].text.strip()
+        
+    except Exception as e:
+        logger.error(f"AI content generation failed: {str(e)}")
+        return generate_fallback_content(content_type, industry, recipient_name, sender_name)
+
+def generate_fallback_content(content_type, industry, recipient_name, sender_name):
+    """Fallback content when AI is unavailable"""
+    fallback_content = {
+        'follow_up': f"I've been thinking about our conversation regarding {industry} trends and wanted to share some additional insights that might be valuable for your current projects.",
+        'newsletter': f"This week in {industry}, we've seen some interesting developments that I thought you'd find relevant to your work.",
+        'inquiry': f"I've been following your work in {industry} and believe there might be some synergies between our organizations that we could explore.",
+        'update': f"I wanted to keep you informed about the progress we've been making in {industry} and how it might impact our collaboration."
+    }
+    return fallback_content.get(content_type, "I hope you're having a great week and wanted to reach out with some thoughts on our industry.")
+
+# Spintax Processing Function
+def process_spintax(text):
+    """Process spintax variations {option1|option2|option3}"""
+    import re
+    
+    def replace_spintax(match):
+        options = match.group(1).split('|')
+        return random.choice(options)
+    
+    while '{' in text and '|' in text and '}' in text:
+        text = re.sub(r'\{([^}]+)\}', replace_spintax, text, count=1)
+    
+    return text
+
+# Email Sending Function
+def send_warmup_email(campaign_id, recipient_email, recipient_name, content_type):
+    """Send actual warmup email"""
+    try:
+        campaign = Campaign.query.get(campaign_id)
+        if not campaign or campaign.status != 'active':
+            return False
+        
+        # Generate AI content
+        ai_content = generate_ai_email_content(
+            content_type, 
+            campaign.industry, 
+            recipient_name, 
+            "Team"  # You can make this dynamic
+        )
+        
+        # Get email template
+        template = EMAIL_CONTENT_TYPES[content_type]
+        subject_template = random.choice(template['subject_templates'])
+        
+        # Generate subject with spintax
+        subject = process_spintax(subject_template.format(
+            topic=campaign.industry,
+            industry=campaign.industry.replace('_', ' ').title(),
+            date=datetime.now().strftime('%B %d')
+        ))
+        
+        # Generate email body
+        email_body = template['body_template'].format(
+            recipient_name=recipient_name,
+            topic=campaign.industry.replace('_', ' '),
+            industry=campaign.industry.replace('_', ' ').title(),
+            main_content=ai_content,
+            sender_name=campaign.email.split('@')[0].title()
+        )
+        
+        # Send email using campaign SMTP settings
+        success = send_smtp_email(campaign, recipient_email, subject, email_body)
+        
+        # Log the email
+        log_email(campaign_id, recipient_email, subject, 'sent' if success else 'failed')
+        
+        if success:
+            # Update campaign stats
+            campaign.emails_sent += 1
+            campaign.progress = calculate_campaign_progress(campaign)
+            db.session.commit()
+            
+        return success
+        
+    except Exception as e:
+        logger.error(f"Error sending warmup email: {str(e)}")
+        log_email(campaign_id, recipient_email, "Error", 'failed', str(e))
+        return False
+
+def send_smtp_email(campaign, recipient_email, subject, body):
+    """Send email using campaign's SMTP settings"""
+    try:
+        # Decrypt password
+        smtp_password = campaign.decrypt_password()
+        
+        # Create message
+        msg = MIMEMultipart()
+        msg['From'] = campaign.email
+        msg['To'] = recipient_email
+        msg['Subject'] = subject
+        msg.attach(MIMEText(body, 'plain'))
+        
+        # Connect and send
+        if campaign.use_tls:
+            server = smtplib.SMTP(campaign.smtp_host, campaign.smtp_port)
+            server.starttls()
+        else:
+            server = smtplib.SMTP(campaign.smtp_host, campaign.smtp_port)
+        
+        server.login(campaign.smtp_username, smtp_password)
+        server.send_message(msg)
+        server.quit()
+        
+        logger.info(f"Email sent successfully to {recipient_email}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"SMTP send failed: {str(e)}")
+        return False
+
+def log_email(campaign_id, recipient, subject, status, error_message=None):
+    """Log email sending attempt"""
+    try:
+        email_log = EmailLog(
+            campaign_id=campaign_id,
+            recipient=recipient,
+            subject=subject,
+            status=status,
+            error_message=error_message,
+            sent_at=datetime.utcnow()
+        )
+        db.session.add(email_log)
+        db.session.commit()
+    except Exception as e:
+        logger.error(f"Error logging email: {str(e)}")
+
+def calculate_campaign_progress(campaign):
+    """Calculate campaign progress percentage"""
+    days_elapsed = (datetime.utcnow() - campaign.created_at).days
+    total_days = campaign.warmup_days
+    return min(int((days_elapsed / total_days) * 100), 100)
+
+def get_daily_volume_for_campaign(campaign):
+    """Calculate daily email volume based on strategy"""
+    strategy_name = getattr(campaign, 'warmup_strategy', 'steady')
+    strategy = WARMUP_STRATEGIES.get(strategy_name, WARMUP_STRATEGIES['steady'])
+    
+    days_elapsed = (datetime.utcnow() - campaign.created_at).days + 1
+    
+    if strategy['pattern'] == 'consistent':
+        return strategy['daily_volume']
+    elif strategy['pattern'] == 'linear_increase':
+        progress = min(days_elapsed / strategy['duration_days'], 1.0)
+        return int(strategy['start_volume'] + (strategy['end_volume'] - strategy['start_volume']) * progress)
+    elif strategy['pattern'] == 'exponential_increase':
+        progress = min(days_elapsed / strategy['duration_days'], 1.0)
+        return int(strategy['start_volume'] * (strategy['end_volume'] / strategy['start_volume']) ** progress)
+    elif strategy['pattern'] == 'gradual_increase':
+        progress = min(days_elapsed / strategy['duration_days'], 1.0)
+        return int(strategy['start_volume'] + (strategy['end_volume'] - strategy['start_volume']) * (progress ** 0.5))
+    
+    return campaign.daily_volume
+
+def is_business_hours():
+    """Check if current time is during business hours"""
+    now = datetime.now()
+    # Monday = 0, Sunday = 6
+    if now.weekday() >= 5:  # Weekend
+        return False
+    if now.hour < 9 or now.hour > 17:  # Outside 9 AM - 5 PM
+        return False
+    return True
+
+def process_warmup_campaigns():
+    """Process all active campaigns for email sending"""
+    if not is_business_hours():
+        return
+    
+    try:
+        active_campaigns = Campaign.query.filter_by(status='active').all()
+        
+        for campaign in active_campaigns:
+            daily_volume = get_daily_volume_for_campaign(campaign)
+            
+            # Check if we've already sent emails today
+            today = datetime.utcnow().date()
+            today_emails = EmailLog.query.filter(
+                EmailLog.campaign_id == campaign.id,
+                EmailLog.sent_at >= today,
+                EmailLog.status == 'sent'
+            ).count()
+            
+            emails_to_send = max(0, daily_volume - today_emails)
+            
+            if emails_to_send > 0:
+                # Select random recipients
+                recipients = random.sample(WARMUP_RECIPIENTS, min(emails_to_send, len(WARMUP_RECIPIENTS)))
+                
+                for recipient in recipients:
+                    # Select random content type
+                    content_type = random.choice(list(EMAIL_CONTENT_TYPES.keys()))
+                    
+                    # Send email
+                    send_warmup_email(
+                        campaign.id,
+                        recipient['email'],
+                        recipient['name'],
+                        content_type
+                    )
+                    
+                    # Small delay between emails
+                    time.sleep(random.uniform(30, 120))  # 30-120 seconds between emails
+                
+                logger.info(f"Sent {len(recipients)} warmup emails for campaign {campaign.name}")
+    
+    except Exception as e:
+        logger.error(f"Error processing warmup campaigns: {str(e)}")
+
+# Background Scheduler
+def start_warmup_scheduler():
+    """Start the background email scheduler"""
+    def run_scheduler():
+        # Schedule email sending every hour during business hours
+        schedule.every().hour.do(process_warmup_campaigns)
+        
+        while True:
+            schedule.run_pending()
+            time.sleep(60)  # Check every minute
+    
+    # Start scheduler in background thread
+    scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
+    scheduler_thread.start()
+    logger.info("Warmup scheduler started")
+
+# API Routes for Warmup Management
+
+@app.route('/api/warmup-strategies')
+def get_warmup_strategies():
+    """Get available warmup strategies"""
+    return jsonify({'strategies': WARMUP_STRATEGIES})
+
+@app.route('/api/campaigns//logs')
+def get_campaign_logs(campaign_id):
+    """Get email logs for a campaign"""
+    try:
+        campaign = Campaign.query.get(campaign_id)
+        if not campaign:
+            return jsonify({'error': 'Campaign not found'}), 404
+        
+        logs = EmailLog.query.filter_by(campaign_id=campaign_id).order_by(EmailLog.sent_at.desc()).limit(100).all()
+        
+        log_data = []
+        for log in logs:
+            log_data.append({
+                'id': log.id,
+                'recipient': log.recipient,
+                'subject': log.subject,
+                'status': log.status,
+                'sent_at': log.sent_at.isoformat() if log.sent_at else None,
+                'error_message': log.error_message
+            })
+        
+        return jsonify({'logs': log_data})
+        
+    except Exception as e:
+        logger.error(f"Error fetching campaign logs: {str(e)}")
+        return jsonify({'error': 'Failed to fetch logs'}), 500
+
+@app.route('/api/campaigns//stats')
+def get_campaign_stats(campaign_id):
+    """Get detailed campaign statistics"""
+    try:
+        campaign = Campaign.query.get(campaign_id)
+        if not campaign:
+            return jsonify({'error': 'Campaign not found'}), 404
+        
+        # Calculate stats
+        total_emails = EmailLog.query.filter_by(campaign_id=campaign_id).count()
+        sent_emails = EmailLog.query.filter_by(campaign_id=campaign_id, status='sent').count()
+        failed_emails = EmailLog.query.filter_by(campaign_id=campaign_id, status='failed').count()
+        
+        success_rate = (sent_emails / total_emails * 100) if total_emails > 0 else 0
+        
+        # Today's stats
+        today = datetime.utcnow().date()
+        today_emails = EmailLog.query.filter(
+            EmailLog.campaign_id == campaign_id,
+            EmailLog.sent_at >= today,
+            EmailLog.status == 'sent'
+        ).count()
+        
+        return jsonify({
+            'campaign_id': campaign_id,
+            'total_emails': total_emails,
+            'sent_emails': sent_emails,
+            'failed_emails': failed_emails,
+            'success_rate': round(success_rate, 1),
+            'today_emails': today_emails,
+            'progress': campaign.progress,
+            'daily_target': get_daily_volume_for_campaign(campaign)
+        })
+        
+    except Exception as e:
+        logger.error(f"Error fetching campaign stats: {str(e)}")
+        return jsonify({'error': 'Failed to fetch stats'}), 500
+
+# Initialize warmup system when app starts
+@app.before_first_request
+def initialize_warmup_system():
+    """Initialize the warmup system"""
+    try:
+        # Start the background scheduler
+        start_warmup_scheduler()
+        logger.info("Warmup system initialized successfully")
+    except Exception as e:
+        logger.error(f"Error initializing warmup system: {str(e)}")
+
+# Add warmup_strategy field to Campaign model (you may need to create a migration)
+# This can be added to your Campaign model:
+# warmup_strategy = db.Column(db.String(50), default='steady')
+
+logger.info("AI-Enhanced Email Warmup Engine loaded successfully!")
