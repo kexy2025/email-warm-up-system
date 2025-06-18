@@ -37,6 +37,10 @@ import random
 # Initialize Flask app
 app = Flask(__name__)
 
+# Logging setup - MOVED TO TOP
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 # Configuration - FIXED
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
 
@@ -45,11 +49,9 @@ database_url = os.environ.get('DATABASE_URL')
 
 # Handle missing or empty DATABASE_URL
 if not database_url or database_url.strip() == '':
-    logger = logging.getLogger(__name__)
     logger.warning("No DATABASE_URL found, using SQLite fallback")
     database_url = 'sqlite:///warmup.db'
 else:
-    logger = logging.getLogger(__name__)
     logger.info(f"Using DATABASE_URL: {database_url[:50]}...")
 
 # Handle PostgreSQL URL format for Railway/Heroku
@@ -61,7 +63,7 @@ app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
 
-# Initialize extensions
+# Initialize extensions - ONLY ONCE
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 login_manager = LoginManager()
@@ -70,27 +72,24 @@ login_manager.login_view = 'login'
 login_manager.login_message = 'Please log in to access this page.'
 CORS(app)
 
-# Logging setup
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Test database connection on startup - FIXED SYNTAX
+def test_database_connection():
+    """Test database connection with proper SQLAlchemy 2.0 syntax"""
+    try:
+        with app.app_context():
+            # Use proper SQLAlchemy 2.0 syntax
+            with db.engine.connect() as connection:
+                result = connection.execute(db.text('SELECT 1'))
+                logger.info("✅ Database connection test successful")
+                return True
+    except Exception as db_error:
+        logger.error(f"❌ Database connection failed: {str(db_error)}")
+        return False
 
-# Test database connection on startup - ADDED SAFETY CHECK
-try:
-    with app.app_context():
-        # Test the connection with a simple query
-        if 'postgresql' in database_url:
-            db.engine.execute(db.text('SELECT 1'))
-            logger.info("✅ PostgreSQL database connection test successful")
-        else:
-            logger.info("✅ Using SQLite database")
-except Exception as db_error:
-    logger.error(f"❌ Database connection failed: {str(db_error)}")
-    # Fall back to SQLite if PostgreSQL fails
+# Test connection and fallback if needed
+if not test_database_connection():
     logger.warning("Falling back to SQLite database")
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///warmup.db'
-    # Reinitialize with SQLite
-    db = SQLAlchemy(app)
-    migrate = Migrate(app, db)
 
 # FIXED: Encryption key handling - MUST BE BEFORE cipher_suite usage
 try:
@@ -1155,7 +1154,7 @@ def internal_error(error):
 def forbidden(error):
     return jsonify({'error': 'Access forbidden'}), 403
 
-# Initialize database - COMPLETELY FIXED VERSION
+# Initialize database - FIXED VERSION WITH PROPER SQLALCHEMY 2.0 SYNTAX
 def create_tables():
     """Create database tables with bulletproof error handling"""
     try:
@@ -1167,15 +1166,16 @@ def create_tables():
             db.create_all()
             logger.info("✅ Database tables created successfully")
             
-            # Verify tables were created
+            # Verify tables were created - FIXED SYNTAX
             try:
                 inspector = db.inspect(db.engine)
                 tables = inspector.get_table_names()
                 logger.info(f"✅ Tables in database: {tables}")
                 
-                # Test database connection
-                test_query = db.session.execute(db.text("SELECT 1")).fetchone()
-                logger.info(f"✅ Database connection test: {test_query}")
+                # Test database connection with proper syntax
+                with db.engine.connect() as connection:
+                    test_query = connection.execute(db.text("SELECT 1")).fetchone()
+                    logger.info(f"✅ Database connection test: {test_query}")
                 
             except Exception as verify_error:
                 logger.error(f"❌ Table verification failed: {str(verify_error)}")
