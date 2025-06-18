@@ -365,23 +365,29 @@ class EmailWarmupDashboard {
         }
     }
 
-    startCampaign(campaignId) {
-    fetch(`/api/campaigns/${campaignId}/start`, {  // Make sure this is the FULL path
+   startCampaign(campaignId) {
+    console.log('Starting campaign:', campaignId); // Debug log
+    
+    fetch(`/api/campaigns/${campaignId}/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
     })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            this.showNotification('Campaign started successfully!', 'success');
-            this.loadCampaigns();
-        } else {
-            this.showNotification(`Failed to start campaign: ${data.message}`, 'error');
+    .then(response => {
+        console.log('Response status:', response.status); // Debug log
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
+        return response.json();
+    })
+    .then(data => {
+        console.log('Success data:', data); // Debug log
+        this.showNotification('Campaign started successfully!', 'success');
+        this.loadCampaigns();
     })
     .catch(error => {
-        console.error('Error:', error);
-        this.showNotification('Error starting campaign.', 'error');
+        console.error('Campaign start error:', error);
+        this.showNotification(`Error starting campaign: ${error.message}`, 'error');
     });
 }
     
