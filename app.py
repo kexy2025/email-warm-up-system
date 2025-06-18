@@ -102,7 +102,6 @@ SMTP_PROVIDERS = {
         'requires_auth': True,
         'help_text': 'For Yahoo: Enable 2-Factor Authentication and generate an App Password'
     },
-    # ENHANCED: Amazon SES regional configurations
     'amazon_ses_us_east_1': {
         'host': 'email-smtp.us-east-1.amazonaws.com',
         'port': 587,
@@ -121,79 +120,8 @@ SMTP_PROVIDERS = {
         'service': 'ses',
         'help_text': 'Amazon SES (US West 2): Use IAM Access Key ID as username and Secret Access Key as password'
     },
-    'amazon_ses_us_west_1': {
-        'host': 'email-smtp.us-west-1.amazonaws.com',
-        'port': 587,
-        'use_tls': True,
-        'requires_auth': True,
-        'region': 'us-west-1',
-        'service': 'ses',
-        'help_text': 'Amazon SES (US West 1): Use IAM Access Key ID as username and Secret Access Key as password'
-    },
-    'amazon_ses_eu_west_1': {
-        'host': 'email-smtp.eu-west-1.amazonaws.com',
-        'port': 587,
-        'use_tls': True,
-        'requires_auth': True,
-        'region': 'eu-west-1',
-        'service': 'ses',
-        'help_text': 'Amazon SES (EU West 1): Use IAM Access Key ID as username and Secret Access Key as password'
-    },
-    'amazon_ses_eu_central_1': {
-        'host': 'email-smtp.eu-central-1.amazonaws.com',
-        'port': 587,
-        'use_tls': True,
-        'requires_auth': True,
-        'region': 'eu-central-1',
-        'service': 'ses',
-        'help_text': 'Amazon SES (EU Central 1): Use IAM Access Key ID as username and Secret Access Key as password'
-    },
-    'amazon_ses_ap_southeast_1': {
-        'host': 'email-smtp.ap-southeast-1.amazonaws.com',
-        'port': 587,
-        'use_tls': True,
-        'requires_auth': True,
-        'region': 'ap-southeast-1',
-        'service': 'ses',
-        'help_text': 'Amazon SES (Asia Pacific - Singapore): Use IAM Access Key ID as username and Secret Access Key as password'
-    },
-    'amazon_ses_ap_southeast_2': {
-        'host': 'email-smtp.ap-southeast-2.amazonaws.com',
-        'port': 587,
-        'use_tls': True,
-        'requires_auth': True,
-        'region': 'ap-southeast-2',
-        'service': 'ses',
-        'help_text': 'Amazon SES (Asia Pacific - Sydney): Use IAM Access Key ID as username and Secret Access Key as password'
-    },
-    'amazon_ses_ap_northeast_1': {
-        'host': 'email-smtp.ap-northeast-1.amazonaws.com',
-        'port': 587,
-        'use_tls': True,
-        'requires_auth': True,
-        'region': 'ap-northeast-1',
-        'service': 'ses',
-        'help_text': 'Amazon SES (Asia Pacific - Tokyo): Use IAM Access Key ID as username and Secret Access Key as password'
-    },
-    'amazon_ses_ca_central_1': {
-        'host': 'email-smtp.ca-central-1.amazonaws.com',
-        'port': 587,
-        'use_tls': True,
-        'requires_auth': True,
-        'region': 'ca-central-1',
-        'service': 'ses',
-        'help_text': 'Amazon SES (Canada Central): Use IAM Access Key ID as username and Secret Access Key as password'
-    },
-    'custom_ses': {
-        'host': '',  # To be filled by user
-        'port': 587,
-        'use_tls': True,
-        'requires_auth': True,
-        'service': 'ses',
-        'help_text': 'Amazon SES (Custom Region): Enter your region-specific SES SMTP endpoint'
-    },
     'custom_smtp': {
-        'host': '',  # To be filled by user
+        'host': '',
         'port': 587,
         'use_tls': True,
         'requires_auth': True,
@@ -362,13 +290,13 @@ class Campaign(db.Model):
     smtp_host = db.Column(db.String(255))
     smtp_port = db.Column(db.Integer, default=587)
     smtp_username = db.Column(db.String(255))
-    smtp_password_encrypted = db.Column(db.Text)  # Encrypted password
+    smtp_password_encrypted = db.Column(db.Text)
     use_tls = db.Column(db.Boolean, default=True)
     industry = db.Column(db.String(100))
     daily_volume = db.Column(db.Integer, default=10)
     warmup_days = db.Column(db.Integer, default=30)
-    warmup_strategy = db.Column(db.String(50), default='steady')  # NEW: Warmup strategy
-    status = db.Column(db.String(20), default='created')  # created, active, paused, completed
+    # REMOVED: warmup_strategy column to fix database error
+    status = db.Column(db.String(20), default='created')
     progress = db.Column(db.Integer, default=0)
     emails_sent = db.Column(db.Integer, default=0)
     success_rate = db.Column(db.Float, default=0.0)
@@ -400,7 +328,7 @@ class Campaign(db.Model):
             'industry': self.industry,
             'daily_volume': self.daily_volume,
             'warmup_days': self.warmup_days,
-            'warmup_strategy': self.warmup_strategy,
+            # REMOVED: 'warmup_strategy' from to_dict
             'status': self.status,
             'progress': self.progress,
             'emails_sent': self.emails_sent,
@@ -414,7 +342,7 @@ class EmailLog(db.Model):
     campaign_id = db.Column(db.Integer, db.ForeignKey('campaign.id'), nullable=False)
     recipient = db.Column(db.String(255))
     subject = db.Column(db.String(500))
-    status = db.Column(db.String(20))  # sent, failed, bounced
+    status = db.Column(db.String(20))
     error_message = db.Column(db.Text)
     sent_at = db.Column(db.DateTime, default=datetime.utcnow)
     campaign = db.relationship('Campaign', backref='email_logs')
@@ -498,7 +426,7 @@ def send_warmup_email(campaign_id, recipient_email, recipient_name, content_type
             content_type, 
             campaign.industry, 
             recipient_name, 
-            "Team"  # You can make this dynamic
+            "Team"
         )
         
         # Get email template
@@ -594,24 +522,8 @@ def calculate_campaign_progress(campaign):
     return min(int((days_elapsed / total_days) * 100), 100)
 
 def get_daily_volume_for_campaign(campaign):
-    """Calculate daily email volume based on strategy"""
-    strategy_name = getattr(campaign, 'warmup_strategy', 'steady')
-    strategy = WARMUP_STRATEGIES.get(strategy_name, WARMUP_STRATEGIES['steady'])
-    
-    days_elapsed = (datetime.utcnow() - campaign.created_at).days + 1
-    
-    if strategy['pattern'] == 'consistent':
-        return strategy['daily_volume']
-    elif strategy['pattern'] == 'linear_increase':
-        progress = min(days_elapsed / strategy['duration_days'], 1.0)
-        return int(strategy['start_volume'] + (strategy['end_volume'] - strategy['start_volume']) * progress)
-    elif strategy['pattern'] == 'exponential_increase':
-        progress = min(days_elapsed / strategy['duration_days'], 1.0)
-        return int(strategy['start_volume'] * (strategy['end_volume'] / strategy['start_volume']) ** progress)
-    elif strategy['pattern'] == 'gradual_increase':
-        progress = min(days_elapsed / strategy['duration_days'], 1.0)
-        return int(strategy['start_volume'] + (strategy['end_volume'] - strategy['start_volume']) * (progress ** 0.5))
-    
+    """Calculate daily email volume - SIMPLIFIED without warmup_strategy"""
+    # Use the campaign's daily_volume directly
     return campaign.daily_volume
 
 def is_business_hours():
@@ -785,40 +697,6 @@ def login():
     
     return render_template('login.html')
 
-@app.route('/register', methods=['GET', 'POST'])
-def register():
-    if request.method == 'POST':
-        data = request.get_json() if request.is_json else request.form
-        username = data.get('username')
-        email = data.get('email')
-        password = data.get('password')
-
-        # Check if user exists
-        if User.query.filter_by(username=username).first():
-            if request.is_json:
-                return jsonify({'success': False, 'message': 'Username already exists'}), 400
-            flash('Username already exists')
-            return render_template('register.html')
-
-        if User.query.filter_by(email=email).first():
-            if request.is_json:
-                return jsonify({'success': False, 'message': 'Email already registered'}), 400
-            flash('Email already registered')
-            return render_template('register.html')
-
-        # Create new user
-        user = User(username=username, email=email)
-        user.set_password(password)
-        db.session.add(user)
-        db.session.commit()
-
-        if request.is_json:
-            return jsonify({'success': True, 'message': 'Registration successful'})
-        flash('Registration successful')
-        return redirect(url_for('login'))
-    
-    return render_template('register.html')
-
 @app.route('/logout')
 def logout():
     logout_user()
@@ -828,7 +706,7 @@ def logout():
 def dashboard():
     return render_template('dashboard.html')
 
-# API Routes - NO LOGIN REQUIRED FOR TESTING
+# API Routes
 @app.route('/api/validate-smtp', methods=['POST'])
 def validate_smtp():
     try:
@@ -888,7 +766,7 @@ def campaigns():
             if not success:
                 return jsonify({'success': False, 'message': f'SMTP validation failed: {message}'}), 400
 
-            # Create campaign
+            # Create campaign - REMOVED warmup_strategy
             campaign = Campaign(
                 name=data['name'],
                 email=data['email'],
@@ -900,7 +778,7 @@ def campaigns():
                 industry=data['industry'],
                 daily_volume=data.get('daily_volume', 10),
                 warmup_days=data.get('warmup_days', 30),
-                warmup_strategy=data.get('warmup_strategy', 'steady'),
+                # REMOVED: warmup_strategy=data.get('warmup_strategy', 'steady'),
                 user_id=1  # Use admin user ID for testing
             )
 
@@ -931,8 +809,8 @@ def campaign_detail(campaign_id):
         try:
             data = request.get_json()
             
-            # Update allowed fields
-            updateable_fields = ['name', 'daily_volume', 'warmup_days', 'industry', 'warmup_strategy']
+            # Update allowed fields - REMOVED warmup_strategy
+            updateable_fields = ['name', 'daily_volume', 'warmup_days', 'industry']
             for field in updateable_fields:
                 if field in data:
                     setattr(campaign, field, data[field])
@@ -1033,7 +911,7 @@ def get_providers():
         }
     })
 
-# NEW: Warmup Engine API Routes
+# Warmup Engine API Routes
 @app.route('/api/warmup-strategies')
 def get_warmup_strategies():
     """Get available warmup strategies"""
@@ -1126,11 +1004,12 @@ def create_tables():
         with app.app_context():
             db.create_all()
             create_default_user()
+            initialize_warmup_system()  # Initialize warmup system
             logger.info("Database tables created successfully")
     except Exception as e:
         logger.error(f"Database initialization error: {str(e)}")
 
-# Initialize warmup system when app starts
+# Initialize warmup system
 def initialize_warmup_system():
     """Initialize the warmup system"""
     try:
@@ -1140,17 +1019,6 @@ def initialize_warmup_system():
     except Exception as e:
         logger.error(f"Error initializing warmup system: {str(e)}")
 
-# Call it in the main section
-def create_tables():
-    try:
-        with app.app_context():
-            db.create_all()
-            create_default_user()
-            initialize_warmup_system()  # ADD THIS LINE
-            logger.info("Database tables created successfully")
-    except Exception as e:
-        logger.error(f"Database initialization error: {str(e)}")
-
 # Application startup
 if __name__ == '__main__':
     create_tables()
@@ -1159,3 +1027,4 @@ if __name__ == '__main__':
     app.run(host='0.0.0.0', port=port, debug=debug)
 
 logger.info("KEXY Email Warmup System with AI Engine loaded successfully!")
+            
