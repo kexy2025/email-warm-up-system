@@ -423,7 +423,10 @@ def send_warmup_email(campaign_id, recipient_email, recipient_name, content_type
     try:
         campaign = Campaign.query.get(campaign_id)
         if not campaign or campaign.status != 'active':
+            logger.error(f"Campaign {campaign_id} not active or not found")
             return False
+        
+        logger.info(f"Generating email content for {recipient_email}")
         
         # Generate AI content
         ai_content = generate_ai_email_content(
@@ -453,6 +456,8 @@ def send_warmup_email(campaign_id, recipient_email, recipient_name, content_type
             sender_name=campaign.email.split('@')[0].title()
         )
         
+        logger.info(f"Attempting to send email to {recipient_email} with subject: {subject}")
+        
         # Send email using campaign SMTP settings
         success = send_smtp_email(campaign, recipient_email, subject, email_body)
         
@@ -464,6 +469,7 @@ def send_warmup_email(campaign_id, recipient_email, recipient_name, content_type
             campaign.emails_sent += 1
             campaign.progress = calculate_campaign_progress(campaign)
             db.session.commit()
+            logger.info(f"Email sent successfully and stats updated")
             
         return success
         
@@ -475,6 +481,8 @@ def send_warmup_email(campaign_id, recipient_email, recipient_name, content_type
 def send_smtp_email(campaign, recipient_email, subject, body):
     """Send email using campaign's SMTP settings"""
     try:
+        logger.info(f"Connecting to SMTP server: {campaign.smtp_host}:{campaign.smtp_port}")
+        
         # Decrypt password
         smtp_password = campaign.decrypt_password()
         
@@ -492,7 +500,10 @@ def send_smtp_email(campaign, recipient_email, subject, body):
         else:
             server = smtplib.SMTP(campaign.smtp_host, campaign.smtp_port)
         
+        logger.info(f"Authenticating with username: {campaign.smtp_username}")
         server.login(campaign.smtp_username, smtp_password)
+        
+        logger.info(f"Sending email from {campaign.email} to {recipient_email}")
         server.send_message(msg)
         server.quit()
         
@@ -516,6 +527,7 @@ def log_email(campaign_id, recipient, subject, status, error_message=None):
         )
         db.session.add(email_log)
         db.session.commit()
+        logger.info(f"Email log created: {status} to {recipient}")
     except Exception as e:
         logger.error(f"Error logging email: {str(e)}")
 
@@ -775,8 +787,8 @@ def campaigns():
             required_fields = ['name', 'email', 'provider', 'username', 'password', 'industry']
             if not all(field in data for field in required_fields):
                 return jsonify({'success': False, 'message': 'Missing required fields'}), 400
-
-            # Get provider configuration
+                
+# Get provider configuration
             provider = data['provider']
             if provider not in SMTP_PROVIDERS and provider not in ['custom_smtp', 'custom_ses']:
                 return jsonify({'success': False, 'message': 'Invalid provider'}), 400
@@ -794,8 +806,8 @@ def campaigns():
 
             if not success:
                 return jsonify({'success': False, 'message': f'SMTP validation failed: {message}'}), 400
-                
-# Create campaign
+
+            # Create campaign
             campaign = Campaign(
                 name=data['name'],
                 email=data['email'],
@@ -824,7 +836,7 @@ def campaigns():
             db.session.rollback()
             return jsonify({'success': False, 'message': 'Failed to create campaign'}), 500
 
-# ✅ FIXED: Campaign-specific routes with proper parameter placeholders
+# Campaign-specific routes with proper parameter placeholders
 @app.route('/api/campaigns/<int:campaign_id>', methods=['GET', 'PUT', 'DELETE'])
 def campaign_detail(campaign_id):
     campaign = Campaign.query.get(campaign_id)
@@ -1008,8 +1020,8 @@ def get_warmup_strategies():
     """Get available warmup strategies"""
     return jsonify({'strategies': WARMUP_STRATEGIES})
 
-# DEBUG ROUTES
-@app.route('/api/debug/campaign/<int:campaign_id>', methods=['GET'])
+# DEBUG ROUTES - FIXED AND WORKING
+@app.route('/api/debug/campaign/<int:campaign_id>')
 def debug_campaign(campaign_id):
     """Debug why campaign isn't working"""
     try:
@@ -1017,29 +1029,29 @@ def debug_campaign(campaign_id):
         if not campaign:
             return jsonify({'error': 'Campaign not found'}), 404
         
-        debug_info = {
-            'campaign_status': campaign.status,
-            'campaign_name': campaign.name,
-            'daily_volume': campaign.daily_volume,
-            'business_hours': is_business_hours(),
-            'current_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        }
-        
         today = datetime.utcnow().date()
         today_emails = EmailLog.query.filter(
             EmailLog.campaign_id == campaign_id,
             EmailLog.sent_at >= today
         ).count()
         
-        debug_info['emails_sent_today'] = today_emails
-        debug_info['emails_remaining'] = max(0, campaign.daily_volume - today_emails)
-        
         total_emails = EmailLog.query.filter_by(campaign_id=campaign_id).count()
-        debug_info['total_emails_ever'] = total_emails
         
-        return jsonify(debug_info)
+        return jsonify({
+            'campaign_status': campaign.status,
+            'campaign_name': campaign.name,
+            'daily_volume': campaign.daily_volume,
+            'emails_sent_today': today_emails,
+            'total_emails_ever': total_emails,
+            'business_hours': is_business_hours(),
+            'current_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'smtp_host': campaign.smtp_host,
+            'smtp_username': campaign.smtp_username,
+            'provider': campaign.provider
+        })
         
     except Exception as e:
+        logger.error(f"Debug campaign error: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/debug/force-send/<int:campaign_id>', methods=['POST'])
@@ -1053,6 +1065,7 @@ def force_send_now(campaign_id):
         if campaign.status != 'active':
             campaign.status = 'active'
             db.session.commit()
+            logger.info(f"Campaign {campaign_id} activated for testing")
         
         recipient = random.choice(WARMUP_RECIPIENTS)
         content_type = random.choice(list(EMAIL_CONTENT_TYPES.keys()))
@@ -1066,10 +1079,16 @@ def force_send_now(campaign_id):
             content_type
         )
         
+        # Get latest log entry
+        latest_log = EmailLog.query.filter_by(campaign_id=campaign_id).order_by(EmailLog.sent_at.desc()).first()
+        
         return jsonify({
             'success': success,
             'recipient': recipient['email'],
-            'campaign_status': campaign.status
+            'campaign_status': campaign.status,
+            'latest_log_status': latest_log.status if latest_log else None,
+            'latest_log_error': latest_log.error_message if latest_log else None,
+            'message': f"Email {'sent successfully' if success else 'failed to send'} - check logs for details"
         })
         
     except Exception as e:
