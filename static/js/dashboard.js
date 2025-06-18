@@ -366,24 +366,25 @@ class EmailWarmupDashboard {
     }
 
     startCampaign(campaignId) {
-        fetch(`${this.apiBaseUrl}/campaigns/${campaignId}/start`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                this.showNotification('Campaign started successfully!', 'success');
-                this.loadCampaigns();
-            } else {
-                this.showNotification(`Failed to start campaign: ${data.message}`, 'error');
-            }
-        })
-        .catch(error => {
-            this.showNotification('Error starting campaign.', 'error');
-        });
-    }
-
+    fetch(`/api/campaigns/${campaignId}/start`, {  // Make sure this is the FULL path
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            this.showNotification('Campaign started successfully!', 'success');
+            this.loadCampaigns();
+        } else {
+            this.showNotification(`Failed to start campaign: ${data.message}`, 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        this.showNotification('Error starting campaign.', 'error');
+    });
+}
+    
     deleteCampaign(campaignId) {
         if (confirm('Are you sure you want to delete this campaign?')) {
             fetch(`${this.apiBaseUrl}/campaigns/${campaignId}`, {
