@@ -542,11 +542,13 @@ def is_business_hours():
 
 def process_warmup_campaigns():
     """Process all active campaigns for email sending"""
-    if not is_business_hours():
-        return
+    # REMOVED business hours check for testing
+    # if not is_business_hours():
+    #     return
     
     try:
         active_campaigns = Campaign.query.filter_by(status='active').all()
+        logger.info(f"Found {len(active_campaigns)} active campaigns")
         
         for campaign in active_campaigns:
             daily_volume = get_daily_volume_for_campaign(campaign)
@@ -560,6 +562,7 @@ def process_warmup_campaigns():
             ).count()
             
             emails_to_send = max(0, daily_volume - today_emails)
+            logger.info(f"Campaign {campaign.name}: {emails_to_send} emails to send today")
             
             if emails_to_send > 0:
                 # Select random recipients
@@ -570,15 +573,16 @@ def process_warmup_campaigns():
                     content_type = random.choice(list(EMAIL_CONTENT_TYPES.keys()))
                     
                     # Send email
-                    send_warmup_email(
+                    success = send_warmup_email(
                         campaign.id,
                         recipient['email'],
                         recipient['name'],
                         content_type
                     )
+                    logger.info(f"Email to {recipient['email']}: {'SUCCESS' if success else 'FAILED'}")
                     
                     # Small delay between emails
-                    time.sleep(random.uniform(30, 120))  # 30-120 seconds between emails
+                    time.sleep(random.uniform(5, 10))  # Reduced delay for testing
                 
                 logger.info(f"Sent {len(recipients)} warmup emails for campaign {campaign.name}")
     
@@ -588,8 +592,8 @@ def process_warmup_campaigns():
 def start_warmup_scheduler():
     """Start the background email scheduler with more frequent checks"""
     def run_scheduler():
-        # Schedule email sending every 15 minutes during business hours
-        schedule.every(15).minutes.do(process_warmup_campaigns)
+        # Schedule email sending every 5 minutes for testing
+        schedule.every(5).minutes.do(process_warmup_campaigns)
         
         # Optional: Add a daily summary at 6 PM
         schedule.every().day.at("18:00").do(log_daily_summary)
@@ -601,7 +605,7 @@ def start_warmup_scheduler():
     # Start scheduler in background thread
     scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
     scheduler_thread.start()
-    logger.info("Warmup scheduler started - checking every 15 minutes during business hours")
+    logger.info("Warmup scheduler started - checking every 5 minutes")
 
 def log_daily_summary():
     """Log a daily summary of campaign activity"""
@@ -620,7 +624,6 @@ def log_daily_summary():
             
     except Exception as e:
         logger.error(f"Error generating daily summary: {str(e)}")
-
 
 # Utility Functions
 def validate_smtp_connection(provider, email, username, password, smtp_host=None, smtp_port=587, use_tls=True):
@@ -791,8 +794,8 @@ def campaigns():
 
             if not success:
                 return jsonify({'success': False, 'message': f'SMTP validation failed: {message}'}), 400
-
-            # Create campaign
+                
+# Create campaign
             campaign = Campaign(
                 name=data['name'],
                 email=data['email'],
@@ -908,102 +911,6 @@ def get_campaign_logs(campaign_id):
         campaign = Campaign.query.get(campaign_id)
         if not campaign:
             return jsonify({'error': 'Campaign not found'}), 404
-            @app.route('/api/warmup-strategies')
-def get_warmup_strategies():
-    """Get available warmup strategies"""
-    return jsonify({'strategies': WARMUP_STRATEGIES})
-
-# DEBUG ROUTES - ADD THESE
-@app.route('/api/debug/campaign/<int:campaign_id>', methods=['GET'])
-def debug_campaign(campaign_id):
-    """Debug why campaign isn't working"""
-    try:
-        campaign = Campaign.query.get(campaign_id)
-        if not campaign:
-            return jsonify({'error': 'Campaign not found'}), 404
-        
-        # Check campaign status
-        debug_info = {
-            'campaign_status': campaign.status,
-            'campaign_name': campaign.name,
-            'daily_volume': campaign.daily_volume,
-            'emails_sent_today': 0,
-            'business_hours': is_business_hours(),
-            'current_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-            'scheduler_running': True,
-        }
-        
-        # Check emails sent today
-        today = datetime.utcnow().date()
-        today_emails = EmailLog.query.filter(
-            EmailLog.campaign_id == campaign_id,
-            EmailLog.sent_at >= today
-        ).count()
-        
-        debug_info['emails_sent_today'] = today_emails
-        debug_info['emails_remaining'] = max(0, campaign.daily_volume - today_emails)
-        
-        # Check if any emails exist at all
-        total_emails = EmailLog.query.filter_by(campaign_id=campaign_id).count()
-        debug_info['total_emails_ever'] = total_emails
-        
-        return jsonify(debug_info)
-        
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/debug/force-send/<int:campaign_id>', methods=['POST'])
-def force_send_now(campaign_id):
-    """Force send an email right now for testing"""
-    try:
-        campaign = Campaign.query.get(campaign_id)
-        if not campaign:
-            return jsonify({'error': 'Campaign not found'}), 404
-        
-        # Force the campaign to active if it isn't
-        if campaign.status != 'active':
-            campaign.status = 'active'
-            db.session.commit()
-        
-        # Get a recipient and send immediately
-        recipient = random.choice(WARMUP_RECIPIENTS)
-        content_type = random.choice(list(EMAIL_CONTENT_TYPES.keys()))
-        
-        logger.info(f"FORCE SENDING email to {recipient['email']} for campaign {campaign.name}")
-        
-        success = send_warmup_email(
-            campaign_id,
-            recipient['email'],
-            recipient['name'],
-            content_type
-        )
-        
-        # Check if email was logged
-        latest_log = EmailLog.query.filter_by(campaign_id=campaign_id).order_by(EmailLog.sent_at.desc()).first()
-        
-        result = {
-            'success': success,
-            'recipient': recipient['email'],
-            'campaign_status': campaign.status,
-            'latest_log': {
-                'recipient': latest_log.recipient if latest_log else None,
-                'status': latest_log.status if latest_log else None,
-                'sent_at': latest_log.sent_at.isoformat() if latest_log and latest_log.sent_at else None,
-                'error': latest_log.error_message if latest_log else None
-            } if latest_log else None
-        }
-        
-        return jsonify(result)
-        
-    except Exception as e:
-        logger.error(f"Force send error: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-
-# Continue with your existing Error Handlers section...
-@app.errorhandler(404)
-def not_found(error):
-    return jsonify({'error': 'Not found'}), 404
-
         
         logs = EmailLog.query.filter_by(campaign_id=campaign_id).order_by(EmailLog.sent_at.desc()).limit(100).all()
         
@@ -1100,6 +1007,85 @@ def get_providers():
 def get_warmup_strategies():
     """Get available warmup strategies"""
     return jsonify({'strategies': WARMUP_STRATEGIES})
+
+# DEBUG ROUTES
+@app.route('/api/debug/campaign/<int:campaign_id>', methods=['GET'])
+def debug_campaign(campaign_id):
+    """Debug why campaign isn't working"""
+    try:
+        campaign = Campaign.query.get(campaign_id)
+        if not campaign:
+            return jsonify({'error': 'Campaign not found'}), 404
+        
+        debug_info = {
+            'campaign_status': campaign.status,
+            'campaign_name': campaign.name,
+            'daily_volume': campaign.daily_volume,
+            'business_hours': is_business_hours(),
+            'current_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        }
+        
+        today = datetime.utcnow().date()
+        today_emails = EmailLog.query.filter(
+            EmailLog.campaign_id == campaign_id,
+            EmailLog.sent_at >= today
+        ).count()
+        
+        debug_info['emails_sent_today'] = today_emails
+        debug_info['emails_remaining'] = max(0, campaign.daily_volume - today_emails)
+        
+        total_emails = EmailLog.query.filter_by(campaign_id=campaign_id).count()
+        debug_info['total_emails_ever'] = total_emails
+        
+        return jsonify(debug_info)
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/debug/force-send/<int:campaign_id>', methods=['POST'])
+def force_send_now(campaign_id):
+    """Force send an email right now for testing"""
+    try:
+        campaign = Campaign.query.get(campaign_id)
+        if not campaign:
+            return jsonify({'error': 'Campaign not found'}), 404
+        
+        if campaign.status != 'active':
+            campaign.status = 'active'
+            db.session.commit()
+        
+        recipient = random.choice(WARMUP_RECIPIENTS)
+        content_type = random.choice(list(EMAIL_CONTENT_TYPES.keys()))
+        
+        logger.info(f"FORCE SENDING email to {recipient['email']} for campaign {campaign.name}")
+        
+        success = send_warmup_email(
+            campaign_id,
+            recipient['email'],
+            recipient['name'],
+            content_type
+        )
+        
+        return jsonify({
+            'success': success,
+            'recipient': recipient['email'],
+            'campaign_status': campaign.status
+        })
+        
+    except Exception as e:
+        logger.error(f"Force send error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/debug/process-campaigns', methods=['POST'])
+def debug_process_campaigns():
+    """Manually trigger campaign processing"""
+    try:
+        logger.info("=== MANUAL CAMPAIGN PROCESSING TRIGGERED ===")
+        process_warmup_campaigns()
+        return jsonify({'success': True, 'message': 'Campaign processing completed - check logs'})
+    except Exception as e:
+        logger.error(f"Manual processing error: {str(e)}")
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 # Error Handlers
 @app.errorhandler(404)
