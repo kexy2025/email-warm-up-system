@@ -9,7 +9,6 @@ from email.mime.multipart import MIMEMultipart
 import random
 import threading
 import time
-import schedule
 import secrets
 import uuid
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for, flash
@@ -19,6 +18,25 @@ from flask_login import LoginManager, UserMixin, login_user, logout_user, login_
 from flask_mail import Mail, Message
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
+
+# Safe imports with fallback handling
+try:
+    import schedule
+    SCHEDULE_AVAILABLE = True
+    print("✅ Schedule module loaded successfully")
+except ImportError:
+    SCHEDULE_AVAILABLE = False
+    schedule = None
+    print("⚠️ Schedule module not available - scheduling features disabled")
+
+try:
+    from apscheduler.schedulers.background import BackgroundScheduler
+    import atexit
+    APSCHEDULER_AVAILABLE = True
+    print("✅ APScheduler loaded successfully")
+except ImportError:
+    APSCHEDULER_AVAILABLE = False
+    print("⚠️ APScheduler not available")
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -77,6 +95,18 @@ login_manager.init_app(app)
 login_manager.login_view = 'login'
 login_manager.login_message = 'Please log in to access this page.'
 login_manager.login_message_category = 'info'
+
+# Initialize scheduler if available
+scheduler = None
+if APSCHEDULER_AVAILABLE:
+    try:
+        scheduler = BackgroundScheduler()
+        scheduler.start()
+        atexit.register(lambda: scheduler.shutdown() if scheduler else None)
+        print("✅ APScheduler initialized successfully")
+    except Exception as e:
+        print(f"⚠️ APScheduler initialization failed: {e}")
+        scheduler = None
 
 # Enhanced SMTP Providers Configuration
 SMTP_PROVIDERS = {
@@ -500,7 +530,7 @@ def process_spintax(text):
     
     return text
 
-# Enhanced Email Sending Functions (keeping existing but user-aware)
+# Enhanced Email Sending Functions (user-aware)
 def send_warmup_email(campaign_id, recipient_email, recipient_name, content_type):
     """Send warmup email with enhanced error handling"""
     try:
@@ -573,7 +603,6 @@ def send_warmup_email(campaign_id, recipient_email, recipient_name, content_type
             log_email(campaign_id, recipient_email, "Error", 'failed', str(e))
         return False
 
-# Keep all existing email functions...
 def send_smtp_email(campaign, recipient_email, subject, body):
     """Send email with enhanced error handling"""
     try:
@@ -651,7 +680,7 @@ def calculate_campaign_progress(campaign):
     except:
         return 0
 
-# Background Scheduler Functions (user-aware)
+# Background Scheduler Functions (safe scheduling)
 def process_warmup_campaigns():
     """Process all active campaigns for email sending"""
     try:
@@ -712,24 +741,55 @@ def process_warmup_campaigns():
         logger.error(f"❌ Error processing warmup campaigns: {str(e)}")
 
 def start_warmup_scheduler():
-    """Start the background email scheduler"""
+    """Start the background email scheduler with safe fallbacks"""
     def run_scheduler():
         logger.info("🚀 Warmup scheduler thread started")
         
-        # Schedule email sending every 2 minutes for testing, every hour for production
-        schedule.every(2).minutes.do(process_warmup_campaigns)
-        
-        while True:
+        # Try to use the best available scheduler
+        if SCHEDULE_AVAILABLE and schedule:
+            logger.info("📅 Using schedule module for task scheduling")
+            # Schedule email sending every 2 minutes for testing, every hour for production
+            schedule.every(2).minutes.do(process_warmup_campaigns)
+            
+            while True:
+                try:
+                    schedule.run_pending()
+                    time.sleep(60)
+                except Exception as e:
+                    logger.error(f"❌ Schedule error: {str(e)}")
+                    time.sleep(60)
+                    
+        elif APSCHEDULER_AVAILABLE and scheduler:
+            logger.info("📅 Using APScheduler for task scheduling")
             try:
-                schedule.run_pending()
-                time.sleep(60)
+                scheduler.add_job(
+                    func=process_warmup_campaigns,
+                    trigger="interval",
+                    minutes=2,
+                    id='warmup_processor'
+                )
+                logger.info("✅ APScheduler job added successfully")
+                # Keep thread alive
+                while True:
+                    time.sleep(60)
             except Exception as e:
-                logger.error(f"❌ Scheduler error: {str(e)}")
-                time.sleep(60)
+                logger.error(f"❌ APScheduler error: {str(e)}")
+                
+        else:
+            logger.warning("⚠️ No scheduler available - using simple timer fallback")
+            # Fallback: simple timer-based scheduling
+            while True:
+                try:
+                    time.sleep(120)  # Wait 2 minutes
+                    process_warmup_campaigns()
+                except Exception as e:
+                    logger.error(f"❌ Timer scheduler error: {str(e)}")
+                    time.sleep(60)
     
+    # Start scheduler in background thread
     scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
     scheduler_thread.start()
-    logger.info("⏰ Warmup scheduler started")
+    logger.info("⏰ Warmup scheduler started successfully")
 
 # AUTHENTICATION ROUTES
 @app.route('/login')
@@ -787,6 +847,11 @@ def health_check():
     return jsonify({
         'status': 'healthy',
         'database': db_status,
+        'scheduling': {
+            'schedule_available': SCHEDULE_AVAILABLE,
+            'apscheduler_available': APSCHEDULER_AVAILABLE,
+            'scheduler_active': scheduler is not None
+        },
         'timestamp': datetime.now().isoformat(),
         'version': '3.0.0'
     })
@@ -1515,12 +1580,26 @@ if __name__ == '__main__':
     # Initialize database with migration support
     init_db()
     
-    # Start background scheduler
+    # Start background scheduler (with safe fallbacks)
     start_warmup_scheduler()
     
     logger.info("🚀 Starting KEXY Email Warmup System - Enhanced Authentication Version")
     logger.info(f"📧 Running on port {port}")
     logger.info("🔧 All features enabled: Authentication, SMTP validation, scheduling, analytics, PostgreSQL migration")
     logger.info("👤 Default accounts: admin@kexy.com (admin123) | demo user available")
+    
+    # Show scheduler status
+    if SCHEDULE_AVAILABLE:
+        logger.info("📅 Schedule module: ✅ Available")
+    else:
+        logger.info("📅 Schedule module: ❌ Not available")
+        
+    if APSCHEDULER_AVAILABLE:
+        logger.info("⏰ APScheduler: ✅ Available")
+    else:
+        logger.info("⏰ APScheduler: ❌ Not available")
+    
+    if not SCHEDULE_AVAILABLE and not APSCHEDULER_AVAILABLE:
+        logger.info("🔄 Using fallback timer-based scheduling")
     
     app.run(host='0.0.0.0', port=port, debug=False)
