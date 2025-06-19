@@ -1,1 +1,248 @@
+{% extends "base.html" %}
 
+{% block title %}Campaigns - Email Warmup System{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+    <div class="px-4 py-6 sm:px-0">
+        <!-- Header -->
+        <div class="flex justify-between items-center mb-8">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-900">Email Campaigns</h1>
+                <p class="text-gray-600 mt-1">Manage all your email warmup campaigns in one place.</p>
+            </div>
+            <a href="{{ url_for('create_campaign') }}" 
+               class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                <i class="fas fa-plus mr-2"></i>
+                New Campaign
+            </a>
+        </div>
+
+        <!-- Filter and Search -->
+        <div class="bg-white shadow-sm rounded-lg mb-6">
+            <div class="p-6">
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Search</label>
+                        <input type="text" id="search-input" placeholder="Search campaigns..." 
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                        <select id="status-filter" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                            <option value="">All Statuses</option>
+                            <option value="active">Active</option>
+                            <option value="paused">Paused</option>
+                            <option value="completed">Completed</option>
+                            <option value="error">Error</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Industry</label>
+                        <select id="industry-filter" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                            <option value="">All Industries</option>
+                            <option value="technology">Technology</option>
+                            <option value="healthcare">Healthcare</option>
+                            <option value="finance">Finance</option>
+                            <option value="education">Education</option>
+                            <option value="retail">Retail</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+                    <div class="flex items-end">
+                        <button onclick="applyFilters()" class="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <i class="fas fa-filter mr-2"></i>Filter
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Campaigns Grid -->
+        <div id="campaigns-container">
+            {% if campaigns %}
+            <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+                {% for campaign in campaigns %}
+                <div class="bg-white shadow-lg rounded-lg card-shadow hover:shadow-xl transition-shadow duration-200 campaign-card" 
+                     data-status="{{ campaign.status }}" data-industry="{{ campaign.industry }}">
+                    <div class="p-6">
+                        <!-- Header -->
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="flex items-center">
+                                <div class="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center">
+                                    <i class="fas fa-envelope text-gray-600"></i>
+                                </div>
+                                <div class="ml-3">
+                                    <h3 class="text-lg font-medium text-gray-900">{{ campaign.email }}</h3>
+                                    <p class="text-sm text-gray-500">{{ campaign.industry|title }}</p>
+                                </div>
+                            </div>
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                                {% if campaign.status == 'active' %}bg-green-100 text-green-800
+                                {% elif campaign.status == 'paused' %}bg-yellow-100 text-yellow-800
+                                {% elif campaign.status == 'completed' %}bg-blue-100 text-blue-800
+                                {% else %}bg-red-100 text-red-800
+                                {% endif %}">
+                                {{ campaign.status|title }}
+                            </span>
+                        </div>
+
+                        <!-- Progress -->
+                        <div class="mb-4">
+                            <div class="flex justify-between text-sm text-gray-600 mb-2">
+                                <span>Progress</span>
+                                <span>{{ (campaign.progress * 100)|round }}%</span>
+                            </div>
+                            <div class="w-full bg-gray-200 rounded-full h-2">
+                                <div class="bg-blue-600 h-2 rounded-full transition-all duration-300" 
+                                     style="width: {{ (campaign.progress * 100)|round }}%"></div>
+                            </div>
+                        </div>
+
+                        <!-- Stats -->
+                        <div class="grid grid-cols-2 gap-4 mb-4">
+                            <div>
+                                <div class="text-2xl font-bold text-gray-900">{{ campaign.emails_sent }}</div>
+                                <div class="text-sm text-gray-500">Emails Sent</div>
+                            </div>
+                            <div>
+                                <div class="text-2xl font-bold text-gray-900">{{ campaign.current_daily_volume }}</div>
+                                <div class="text-sm text-gray-500">Daily Volume</div>
+                            </div>
+                        </div>
+
+                        <!-- Actions -->
+                        <div class="flex space-x-2">
+                            <a href="{{ url_for('campaign_details', id=campaign.id) }}" 
+                               class="flex-1 text-center px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                                View Details
+                            </a>
+                            {% if campaign.status == 'active' %}
+                            <button onclick="pauseCampaign({{ campaign.id }})" 
+                                    class="px-3 py-2 border border-yellow-300 rounded-md text-sm font-medium text-yellow-700 bg-yellow-50 hover:bg-yellow-100">
+                                <i class="fas fa-pause"></i>
+                            </button>
+                            {% elif campaign.status == 'paused' %}
+                            <button onclick="resumeCampaign({{ campaign.id }})" 
+                                    class="px-3 py-2 border border-green-300 rounded-md text-sm font-medium text-green-700 bg-green-50 hover:bg-green-100">
+                                <i class="fas fa-play"></i>
+                            </button>
+                            {% endif %}
+                            <button onclick="deleteCampaign({{ campaign.id }})" 
+                                    class="px-3 py-2 border border-red-300 rounded-md text-sm font-medium text-red-700 bg-red-50 hover:bg-red-100">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="text-center py-12">
+                <i class="fas fa-paper-plane text-gray-400 text-6xl mb-6"></i>
+                <h3 class="text-xl font-medium text-gray-900 mb-4">No campaigns yet</h3>
+                <p class="text-gray-500 mb-8">Get started by creating your first email warmup campaign to improve deliverability.</p>
+                <a href="{{ url_for('create_campaign') }}" 
+                   class="inline-flex items-center px-6 py-3 border border-transparent rounded-md shadow-sm text-base font-medium text-white bg-blue-600 hover:bg-blue-700">
+                    <i class="fas fa-plus mr-2"></i>
+                    Create Your First Campaign
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Filter functionality
+function applyFilters() {
+    const searchTerm = document.getElementById('search-input').value.toLowerCase();
+    const statusFilter = document.getElementById('status-filter').value;
+    const industryFilter = document.getElementById('industry-filter').value;
+    
+    const campaignCards = document.querySelectorAll('.campaign-card');
+    
+    campaignCards.forEach(card => {
+        const email = card.querySelector('h3').textContent.toLowerCase();
+        const status = card.dataset.status;
+        const industry = card.dataset.industry;
+        
+        const matchesSearch = email.includes(searchTerm);
+        const matchesStatus = !statusFilter || status === statusFilter;
+        const matchesIndustry = !industryFilter || industry === industryFilter;
+        
+        if (matchesSearch && matchesStatus && matchesIndustry) {
+            card.style.display = 'block';
+        } else {
+            card.style.display = 'none';
+        }
+    });
+}
+
+// Real-time search
+document.getElementById('search-input').addEventListener('input', applyFilters);
+
+// Campaign actions
+function pauseCampaign(campaignId) {
+    if (confirm('Are you sure you want to pause this campaign?')) {
+        fetch(`/api/campaigns/${campaignId}/pause`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token() }}'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Error pausing campaign: ' + data.message);
+            }
+        });
+    }
+}
+
+function resumeCampaign(campaignId) {
+    if (confirm('Are you sure you want to resume this campaign?')) {
+        fetch(`/api/campaigns/${campaignId}/start`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token() }}'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Error resuming campaign: ' + data.message);
+            }
+        });
+    }
+}
+
+function deleteCampaign(campaignId) {
+    if (confirm('Are you sure you want to delete this campaign? This action cannot be undone.')) {
+        fetch(`/api/campaigns/${campaignId}`, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token() }}'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Error deleting campaign: ' + data.message);
+            }
+        });
+    }
+}
+</script>
+{% endblock %}
