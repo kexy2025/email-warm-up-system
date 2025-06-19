@@ -2,90 +2,79 @@ import os
 from datetime import timedelta
 
 class Config:
-    """Base configuration class."""
-    
-    # Flask Configuration
-    SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-key-change-in-production'
+    # Basic Flask Configuration
+    SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-secret-key-change-in-production'
     
     # Database Configuration
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or 'sqlite:///email_warmup.db'
+    DATABASE_URL = os.environ.get('DATABASE_URL')
+    if DATABASE_URL and DATABASE_URL.startswith('postgres://'):
+        DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
+    
+    SQLALCHEMY_DATABASE_URI = DATABASE_URL or 'sqlite:///warmup.db'
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ENGINE_OPTIONS = {
-        'pool_size': 10,
-        'pool_recycle': 120,
         'pool_pre_ping': True,
-        'pool_timeout': 20,
-        'max_overflow': 0
+        'pool_recycle': 300,
     }
     
     # Security Configuration
+    ENCRYPTION_KEY = os.environ.get('ENCRYPTION_KEY')
     WTF_CSRF_ENABLED = True
-    WTF_CSRF_TIME_LIMIT = None
-    SESSION_COOKIE_SECURE = os.environ.get('FORCE_HTTPS', 'False').lower() == 'true'
+    WTF_CSRF_TIME_LIMIT = 3600
+    
+    # Session Configuration
+    PERMANENT_SESSION_LIFETIME = timedelta(days=7)
+    SESSION_COOKIE_SECURE = os.environ.get('FLASK_ENV') == 'production'
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = 'Lax'
-    PERMANENT_SESSION_LIFETIME = timedelta(hours=24)
     
-    # Rate Limiting Configuration
-    RATELIMIT_STORAGE_URL = os.environ.get('REDIS_URL') or 'redis://localhost:6379/1'
-    RATELIMIT_DEFAULT = "200 per day, 50 per hour"
+    # Redis Configuration (for Celery)
+    REDIS_URL = os.environ.get('REDIS_URL') or 'redis://localhost:6379/0'
     
     # Email Configuration
-    MAIL_SERVER = os.environ.get('MAIL_SERVER') or 'smtp.gmail.com'
+    MAIL_SERVER = os.environ.get('MAIL_SERVER')
     MAIL_PORT = int(os.environ.get('MAIL_PORT') or 587)
-    MAIL_USE_TLS = os.environ.get('MAIL_USE_TLS', 'True').lower() == 'true'
+    MAIL_USE_TLS = os.environ.get('MAIL_USE_TLS', 'true').lower() in ['true', 'on', '1']
     MAIL_USERNAME = os.environ.get('MAIL_USERNAME')
     MAIL_PASSWORD = os.environ.get('MAIL_PASSWORD')
     
-    # Celery Configuration
-    CELERY_BROKER_URL = os.environ.get('REDIS_URL') or 'redis://localhost:6379/0'
-    CELERY_RESULT_BACKEND = os.environ.get('REDIS_URL') or 'redis://localhost:6379/0'
+    # Application Configuration
+    PORT = int(os.environ.get('PORT', 5000))
+    DEBUG = os.environ.get('FLASK_ENV') == 'development'
     
-    # Email Warmup Settings
-    DEFAULT_DAILY_VOLUME = int(os.environ.get('DEFAULT_DAILY_VOLUME', 5))
-    MAX_DAILY_VOLUME = int(os.environ.get('MAX_DAILY_VOLUME', 100))
-    WARMUP_DURATION_DAYS = int(os.environ.get('WARMUP_DURATION_DAYS', 30))
+    # Rate Limiting
+    RATELIMIT_STORAGE_URL = REDIS_URL
+    RATELIMIT_DEFAULT = "100 per hour"
     
-    # Encryption
-    ENCRYPTION_KEY = os.environ.get('ENCRYPTION_KEY')
+    # File Upload
+    MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size
     
-    # Logging
-    LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO')
-    LOG_FILE = os.environ.get('LOG_FILE', 'app.log')
+    # Warmup System Configuration
+    DEFAULT_WARMUP_DURATION = 30  # days
+    MIN_DAILY_EMAILS = 5
+    MAX_DAILY_EMAILS = 100
+    VOLUME_INCREASE_INTERVAL = 3  # days
+    
+    # Demo Account Configuration
+    DEMO_ACCOUNT_LIMIT = 2  # campaigns per demo account
+    DEMO_ACCOUNT_DURATION = 7  # days
 
 class DevelopmentConfig(Config):
-    """Development configuration."""
     DEBUG = True
-    SQLALCHEMY_ECHO = False  # Set to True to see SQL queries
+    SQLALCHEMY_DATABASE_URI = 'sqlite:///warmup_dev.db'
 
 class ProductionConfig(Config):
-    """Production configuration."""
     DEBUG = False
-    SESSION_COOKIE_SECURE = True
-    WTF_CSRF_SSL_STRICT = True
-    
-    # Enhanced security for production
-    SQLALCHEMY_ENGINE_OPTIONS = {
-        **Config.SQLALCHEMY_ENGINE_OPTIONS,
-        'pool_size': 20,
-        'max_overflow': 10
-    }
+    # Use environment variables for production settings
 
 class TestingConfig(Config):
-    """Testing configuration."""
     TESTING = True
-    SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
+    SQLALCHEMY_DATABASE_URI = 'sqlite:///warmup_test.db'
     WTF_CSRF_ENABLED = False
 
-# Configuration dictionary
 config = {
     'development': DevelopmentConfig,
     'production': ProductionConfig,
     'testing': TestingConfig,
     'default': DevelopmentConfig
 }
-
-def get_config():
-    """Get configuration based on environment."""
-    env = os.environ.get('FLASK_ENV', 'development')
-    return config.get(env, config['default'])
