@@ -10,21 +10,19 @@ import random
 import threading
 import time
 import schedule
-from flask import Flask, render_template, request, jsonify
+import secrets
+import uuid
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for, flash
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
+from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
+from flask_mail import Mail, Message
 from werkzeug.security import generate_password_hash, check_password_hash
+from functools import wraps
 
 # Initialize Flask app
 app = Flask(__name__)
 CORS(app)
-
-# Logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
 
 # Configuration
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
@@ -35,9 +33,11 @@ if database_url and not database_url.startswith('sqlite'):
     if database_url.startswith('postgres://'):
         database_url = database_url.replace('postgres://', 'postgresql://', 1)
     app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+    logger = logging.getLogger(__name__)
     logger.info("🔧 Using PostgreSQL database - AUTO-MIGRATION ENABLED")
 else:
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///warmup.db'
+    logger = logging.getLogger(__name__)
     logger.info("🔧 Using SQLite database in app directory")
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -48,8 +48,35 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     'max_overflow': 0
 }
 
-# Initialize database
+# Email configuration for password reset
+app.config['MAIL_SERVER'] = os.environ.get('MAIL_SERVER', 'smtp.gmail.com')
+app.config['MAIL_PORT'] = int(os.environ.get('MAIL_PORT', 587))
+app.config['MAIL_USE_TLS'] = True
+app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USERNAME', '')
+app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASSWORD', '')
+app.config['MAIL_DEFAULT_SENDER'] = os.environ.get('MAIL_DEFAULT_SENDER', 'noreply@kexy.com')
+
+# Session configuration
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
+app.config['SESSION_COOKIE_SECURE'] = True
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+
+# Logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Initialize extensions
 db = SQLAlchemy(app)
+mail = Mail(app)
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login'
+login_manager.login_message = 'Please log in to access this page.'
+login_manager.login_message_category = 'info'
 
 # Enhanced SMTP Providers Configuration
 SMTP_PROVIDERS = {
@@ -200,14 +227,47 @@ WARMUP_RECIPIENTS = [
     {"email": "maria.design@creative-studio.com", "name": "Maria Lopez", "industry": "marketing", "responds": True}
 ]
 
-# Database Models
-class User(db.Model):
+# Enhanced Database Models with Authentication
+class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
+    role = db.Column(db.String(20), default='user')  # user, admin, demo
+    email_verified = db.Column(db.Boolean, default=False)
+    is_active = db.Column(db.Boolean, default=True)
+    last_login = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     campaigns = db.relationship('Campaign', backref='user', lazy=True, cascade='all, delete-orphan')
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+    
+    def is_admin(self):
+        return self.role == 'admin'
+    
+    def is_demo(self):
+        return self.role == 'demo'
+    
+    def get_campaign_limit(self):
+        if self.role == 'admin':
+            return float('inf')
+        elif self.role == 'demo':
+            return 1
+        else:
+            return 10
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'username': self.username,
+            'email': self.email,
+            'role': self.role,
+            'email_verified': self.email_verified,
+            'is_active': self.is_active,
+            'last_login': self.last_login.isoformat() if self.last_login else None,
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }
 
     def __repr__(self):
         return f'<User {self.username}>'
@@ -229,7 +289,7 @@ class Campaign(db.Model):
     success_rate = db.Column(db.Float, default=0.0)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, default=1)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
 
     def to_dict(self):
         return {
@@ -244,7 +304,8 @@ class Campaign(db.Model):
             'emails_sent': self.emails_sent,
             'success_rate': round(self.success_rate, 1),
             'created_at': self.created_at.isoformat() if self.created_at else None,
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'user_id': self.user_id
         }
 
     def __repr__(self):
@@ -262,7 +323,139 @@ class EmailLog(db.Model):
     def __repr__(self):
         return f'<EmailLog {self.recipient}>'
 
-# Email Generation Functions
+class PasswordResetToken(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    token = db.Column(db.String(255), unique=True, nullable=False)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    used = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def is_expired(self):
+        return datetime.utcnow() > self.expires_at
+
+    def __repr__(self):
+        return f'<PasswordResetToken {self.token}>'
+
+class LoginAttempt(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(120), nullable=False)
+    ip_address = db.Column(db.String(45))
+    success = db.Column(db.Boolean, nullable=False)
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f'<LoginAttempt {self.email}>'
+
+# Login Manager
+@login_manager.user_loader
+def load_user(user_id):
+    return db.session.get(User, int(user_id))
+
+# Decorators
+def admin_required(f):
+    @wraps(f)
+    @login_required
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_admin():
+            return jsonify({'error': 'Admin access required'}), 403
+        return f(*args, **kwargs)
+    return decorated_function
+
+def demo_restricted(f):
+    @wraps(f)
+    @login_required  
+    def decorated_function(*args, **kwargs):
+        if current_user.is_demo():
+            return jsonify({'error': 'Demo accounts cannot perform this action'}), 403
+        return f(*args, **kwargs)
+    return decorated_function
+
+# Authentication Helper Functions
+def generate_reset_token():
+    return secrets.token_urlsafe(32)
+
+def send_reset_email(user, token):
+    try:
+        reset_url = url_for('reset_password', token=token, _external=True)
+        html_body = f"""
+        <h2>Password Reset Request</h2>
+        <p>Hello {user.username},</p>
+        <p>You requested a password reset for your KEXY Email Warmup account.</p>
+        <p>Click the link below to reset your password:</p>
+        <p><a href="{reset_url}" style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Reset Password</a></p>
+        <p>This link will expire in 1 hour.</p>
+        <p>If you didn't request this reset, please ignore this email.</p>
+        <br>
+        <p>Best regards,<br>KEXY Email Warmup Team</p>
+        """
+        
+        msg = Message(
+            'Password Reset Request - KEXY Email Warmup',
+            recipients=[user.email],
+            html=html_body
+        )
+        mail.send(msg)
+        return True
+    except Exception as e:
+        logger.error(f"Failed to send reset email: {str(e)}")
+        return False
+
+def log_login_attempt(email, ip_address, success):
+    try:
+        attempt = LoginAttempt(
+            email=email,
+            ip_address=ip_address,
+            success=success
+        )
+        db.session.add(attempt)
+        db.session.commit()
+    except Exception as e:
+        logger.error(f"Failed to log login attempt: {str(e)}")
+
+def create_demo_user():
+    """Create demo user with sample campaign"""
+    try:
+        demo_user = User.query.filter_by(role='demo').first()
+        if not demo_user:
+            demo_user = User(
+                username='demo',
+                email='demo@kexy.com',
+                password_hash=generate_password_hash('demo123'),
+                role='demo',
+                email_verified=True,
+                is_active=True
+            )
+            db.session.add(demo_user)
+            db.session.commit()
+            
+            # Create sample campaign for demo user
+            demo_campaign = Campaign(
+                name='Demo Email Warmup Campaign',
+                email='demo@example.com',
+                provider='gmail',
+                smtp_host='smtp.gmail.com',
+                smtp_port=587,
+                smtp_username='demo@example.com',
+                smtp_password='demo-password',
+                industry='marketing',
+                daily_volume=5,
+                warmup_days=15,
+                status='paused',
+                emails_sent=25,
+                success_rate=85.5,
+                user_id=demo_user.id
+            )
+            db.session.add(demo_campaign)
+            db.session.commit()
+            
+            logger.info("Demo user and sample campaign created")
+        return demo_user
+    except Exception as e:
+        logger.error(f"Failed to create demo user: {str(e)}")
+        return None
+
+# Email Generation Functions (keeping existing)
 def generate_fallback_content(content_type, industry, recipient_name, sender_name):
     """Generate fallback email content"""
     content_variations = {
@@ -307,7 +500,7 @@ def process_spintax(text):
     
     return text
 
-# Enhanced Email Sending Functions
+# Enhanced Email Sending Functions (keeping existing but user-aware)
 def send_warmup_email(campaign_id, recipient_email, recipient_name, content_type):
     """Send warmup email with enhanced error handling"""
     try:
@@ -316,6 +509,16 @@ def send_warmup_email(campaign_id, recipient_email, recipient_name, content_type
             if not campaign or campaign.status != 'active':
                 logger.error(f"Campaign {campaign_id} not active or not found")
                 return False
+            
+            # Check if user is demo (demo campaigns don't actually send emails)
+            user = db.session.get(User, campaign.user_id)
+            if user and user.is_demo():
+                logger.info(f"Demo campaign {campaign_id} - simulated email send to {recipient_email}")
+                log_email(campaign_id, recipient_email, "Demo Email", 'sent')
+                campaign.emails_sent += 1
+                update_campaign_success_rate(campaign_id)
+                db.session.commit()
+                return True
             
             logger.info(f"Generating email content for {recipient_email}")
             
@@ -370,6 +573,7 @@ def send_warmup_email(campaign_id, recipient_email, recipient_name, content_type
             log_email(campaign_id, recipient_email, "Error", 'failed', str(e))
         return False
 
+# Keep all existing email functions...
 def send_smtp_email(campaign, recipient_email, subject, body):
     """Send email with enhanced error handling"""
     try:
@@ -447,7 +651,7 @@ def calculate_campaign_progress(campaign):
     except:
         return 0
 
-# Background Scheduler Functions
+# Background Scheduler Functions (user-aware)
 def process_warmup_campaigns():
     """Process all active campaigns for email sending"""
     try:
@@ -457,6 +661,12 @@ def process_warmup_campaigns():
             
             for campaign in active_campaigns:
                 try:
+                    # Check if user account is active
+                    user = db.session.get(User, campaign.user_id)
+                    if not user or not user.is_active:
+                        logger.info(f"⏭️ Skipping campaign '{campaign.name}': User account inactive")
+                        continue
+                    
                     # Check daily quota
                     today = datetime.utcnow().date()
                     today_emails = EmailLog.query.filter(
@@ -486,8 +696,9 @@ def process_warmup_campaigns():
                             
                             logger.info(f"📨 Email to {recipient['email']}: {'✅' if success else '❌'}")
                             
-                            # Delay between emails
-                            time.sleep(random.uniform(30, 60))
+                            # Delay between emails (shorter for demo accounts)
+                            delay = random.uniform(5, 10) if user.is_demo() else random.uniform(30, 60)
+                            time.sleep(delay)
                         
                         logger.info(f"✅ Processed {len(recipients)} emails for '{campaign.name}'")
                     else:
@@ -520,12 +731,52 @@ def start_warmup_scheduler():
     scheduler_thread.start()
     logger.info("⏰ Warmup scheduler started")
 
+# AUTHENTICATION ROUTES
+@app.route('/login')
+def login():
+    if current_user.is_authenticated:
+        return redirect(url_for('dashboard'))
+    return render_template('login.html')
+
+@app.route('/register')
+def register():
+    if current_user.is_authenticated:
+        return redirect(url_for('dashboard'))
+    return render_template('register.html')
+
+@app.route('/forgot-password')
+def forgot_password():
+    if current_user.is_authenticated:
+        return redirect(url_for('dashboard'))
+    return render_template('forgot-password.html')
+
+@app.route('/reset-password/<token>')
+def reset_password(token):
+    if current_user.is_authenticated:
+        return redirect(url_for('dashboard'))
+    
+    # Verify token
+    reset_token = PasswordResetToken.query.filter_by(token=token, used=False).first()
+    if not reset_token or reset_token.is_expired():
+        flash('Invalid or expired reset token', 'error')
+        return redirect(url_for('forgot_password'))
+    
+    return render_template('reset-password.html', token=token)
+
+@app.route('/profile')
+@login_required
+def profile():
+    return render_template('profile.html')
+
 # MAIN ROUTES
 @app.route('/')
 def index():
-    return render_template('dashboard.html')
+    if not current_user.is_authenticated:
+        return redirect(url_for('login'))
+    return redirect(url_for('dashboard'))
 
 @app.route('/dashboard')
+@login_required
 def dashboard():
     return render_template('dashboard.html')
 
@@ -543,12 +794,314 @@ def health_check():
         'status': 'healthy',
         'database': db_status,
         'timestamp': datetime.now().isoformat(),
-        'version': '2.0.0'
+        'version': '3.0.0'
     })
 
 @app.route('/test')
 def test_route():
     return jsonify({'status': 'working', 'timestamp': datetime.now().isoformat()})
+
+# AUTHENTICATION API ROUTES
+@app.route('/api/auth/login', methods=['POST'])
+def api_login():
+    try:
+        data = request.get_json()
+        email = data.get('email', '').strip().lower()
+        password = data.get('password', '')
+        remember = data.get('remember', False)
+        
+        if not email or not password:
+            return jsonify({'success': False, 'message': 'Email and password are required'}), 400
+        
+        user = User.query.filter_by(email=email).first()
+        
+        # Log login attempt
+        ip_address = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
+        
+        if user and user.check_password(password) and user.is_active:
+            # Successful login
+            log_login_attempt(email, ip_address, True)
+            
+            user.last_login = datetime.utcnow()
+            db.session.commit()
+            
+            login_user(user, remember=remember)
+            session.permanent = remember
+            
+            logger.info(f"User {user.username} logged in successfully")
+            
+            return jsonify({
+                'success': True,
+                'message': 'Login successful',
+                'user': user.to_dict(),
+                'redirect_url': url_for('dashboard')
+            })
+        else:
+            # Failed login
+            log_login_attempt(email, ip_address, False)
+            
+            return jsonify({
+                'success': False,
+                'message': 'Invalid email or password'
+            }), 401
+            
+    except Exception as e:
+        logger.error(f"Login error: {str(e)}")
+        return jsonify({'success': False, 'message': 'Login failed'}), 500
+
+@app.route('/api/auth/register', methods=['POST'])
+def api_register():
+    try:
+        data = request.get_json()
+        username = data.get('username', '').strip()
+        email = data.get('email', '').strip().lower()
+        password = data.get('password', '')
+        
+        # Validation
+        if not username or not email or not password:
+            return jsonify({'success': False, 'message': 'All fields are required'}), 400
+        
+        if len(password) < 8:
+            return jsonify({'success': False, 'message': 'Password must be at least 8 characters'}), 400
+        
+        # Check if user already exists
+        if User.query.filter_by(email=email).first():
+            return jsonify({'success': False, 'message': 'Email already registered'}), 400
+        
+        if User.query.filter_by(username=username).first():
+            return jsonify({'success': False, 'message': 'Username already taken'}), 400
+        
+        # Create new user
+        user = User(
+            username=username,
+            email=email,
+            password_hash=generate_password_hash(password),
+            role='user',
+            email_verified=True  # Skip email verification for now
+        )
+        
+        db.session.add(user)
+        db.session.commit()
+        
+        # Auto-login
+        login_user(user)
+        
+        logger.info(f"New user registered: {username}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Registration successful',
+            'user': user.to_dict(),
+            'redirect_url': url_for('dashboard')
+        })
+        
+    except Exception as e:
+        logger.error(f"Registration error: {str(e)}")
+        db.session.rollback()
+        return jsonify({'success': False, 'message': 'Registration failed'}), 500
+
+@app.route('/api/auth/demo-login', methods=['POST'])
+def api_demo_login():
+    try:
+        demo_user = User.query.filter_by(role='demo').first()
+        if not demo_user:
+            demo_user = create_demo_user()
+        
+        if demo_user:
+            login_user(demo_user)
+            logger.info("Demo user logged in")
+            
+            return jsonify({
+                'success': True,
+                'message': 'Demo login successful',
+                'user': demo_user.to_dict(),
+                'redirect_url': url_for('dashboard')
+            })
+        else:
+            return jsonify({'success': False, 'message': 'Demo account unavailable'}), 500
+            
+    except Exception as e:
+        logger.error(f"Demo login error: {str(e)}")
+        return jsonify({'success': False, 'message': 'Demo login failed'}), 500
+
+@app.route('/api/auth/forgot-password', methods=['POST'])
+def api_forgot_password():
+    try:
+        data = request.get_json()
+        email = data.get('email', '').strip().lower()
+        
+        if not email:
+            return jsonify({'success': False, 'message': 'Email is required'}), 400
+        
+        user = User.query.filter_by(email=email).first()
+        
+        if user:
+            # Generate reset token
+            token = generate_reset_token()
+            expires_at = datetime.utcnow() + timedelta(hours=1)
+            
+            reset_token = PasswordResetToken(
+                user_id=user.id,
+                token=token,
+                expires_at=expires_at
+            )
+            
+            db.session.add(reset_token)
+            db.session.commit()
+            
+            # Send reset email
+            if send_reset_email(user, token):
+                return jsonify({
+                    'success': True,
+                    'message': 'Password reset email sent'
+                })
+            else:
+                return jsonify({
+                    'success': False,
+                    'message': 'Failed to send reset email'
+                }), 500
+        else:
+            # Don't reveal if email exists
+            return jsonify({
+                'success': True,
+                'message': 'If the email exists, a reset link will be sent'
+            })
+            
+    except Exception as e:
+        logger.error(f"Forgot password error: {str(e)}")
+        return jsonify({'success': False, 'message': 'Request failed'}), 500
+
+@app.route('/api/auth/reset-password', methods=['POST'])
+def api_reset_password():
+    try:
+        data = request.get_json()
+        token = data.get('token', '')
+        new_password = data.get('password', '')
+        
+        if not token or not new_password:
+            return jsonify({'success': False, 'message': 'Token and password are required'}), 400
+        
+        if len(new_password) < 8:
+            return jsonify({'success': False, 'message': 'Password must be at least 8 characters'}), 400
+        
+        # Verify token
+        reset_token = PasswordResetToken.query.filter_by(token=token, used=False).first()
+        
+        if not reset_token or reset_token.is_expired():
+            return jsonify({'success': False, 'message': 'Invalid or expired token'}), 400
+        
+        # Update password
+        user = db.session.get(User, reset_token.user_id)
+        user.password_hash = generate_password_hash(new_password)
+        
+        # Mark token as used
+        reset_token.used = True
+        
+        db.session.commit()
+        
+        logger.info(f"Password reset successful for user {user.username}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Password reset successful',
+            'redirect_url': url_for('login')
+        })
+        
+    except Exception as e:
+        logger.error(f"Reset password error: {str(e)}")
+        return jsonify({'success': False, 'message': 'Password reset failed'}), 500
+
+@app.route('/api/auth/logout', methods=['POST'])
+@login_required
+def api_logout():
+    try:
+        username = current_user.username
+        logout_user()
+        session.clear()
+        
+        logger.info(f"User {username} logged out")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Logout successful',
+            'redirect_url': url_for('login')
+        })
+        
+    except Exception as e:
+        logger.error(f"Logout error: {str(e)}")
+        return jsonify({'success': False, 'message': 'Logout failed'}), 500
+
+@app.route('/api/auth/user')
+@login_required
+def api_current_user():
+    return jsonify({
+        'success': True,
+        'user': current_user.to_dict()
+    })
+
+@app.route('/api/auth/update-profile', methods=['PUT'])
+@login_required
+def api_update_profile():
+    try:
+        data = request.get_json()
+        
+        # Update allowed fields
+        if 'username' in data and data['username'].strip():
+            new_username = data['username'].strip()
+            if new_username != current_user.username:
+                if User.query.filter_by(username=new_username).first():
+                    return jsonify({'success': False, 'message': 'Username already taken'}), 400
+                current_user.username = new_username
+        
+        if 'email' in data and data['email'].strip():
+            new_email = data['email'].strip().lower()
+            if new_email != current_user.email:
+                if User.query.filter_by(email=new_email).first():
+                    return jsonify({'success': False, 'message': 'Email already registered'}), 400
+                current_user.email = new_email
+                current_user.email_verified = False  # Require re-verification
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Profile updated successfully',
+            'user': current_user.to_dict()
+        })
+        
+    except Exception as e:
+        logger.error(f"Profile update error: {str(e)}")
+        db.session.rollback()
+        return jsonify({'success': False, 'message': 'Profile update failed'}), 500
+
+@app.route('/api/auth/change-password', methods=['POST'])
+@login_required
+def api_change_password():
+    try:
+        data = request.get_json()
+        current_password = data.get('current_password', '')
+        new_password = data.get('new_password', '')
+        
+        if not current_password or not new_password:
+            return jsonify({'success': False, 'message': 'Current and new passwords are required'}), 400
+        
+        if not current_user.check_password(current_password):
+            return jsonify({'success': False, 'message': 'Current password is incorrect'}), 400
+        
+        if len(new_password) < 8:
+            return jsonify({'success': False, 'message': 'New password must be at least 8 characters'}), 400
+        
+        current_user.password_hash = generate_password_hash(new_password)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Password changed successfully'
+        })
+        
+    except Exception as e:
+        logger.error(f"Change password error: {str(e)}")
+        return jsonify({'success': False, 'message': 'Password change failed'}), 500
 
 # Debug endpoints for PostgreSQL migration
 @app.route('/api/debug/db-status')
@@ -560,10 +1113,12 @@ def db_status():
         
         campaign_count = Campaign.query.count()
         email_log_count = EmailLog.query.count()
+        user_count = User.query.count()
         
         return jsonify({
             'database_type': 'PostgreSQL' if is_postgresql else 'SQLite',
             'database_url_prefix': db_url[:30] + '...' if db_url else 'None',
+            'users_count': user_count,
             'campaigns_count': campaign_count,
             'email_logs_count': email_log_count,
             'migration_ready': is_postgresql and campaign_count == 0,
@@ -578,8 +1133,10 @@ def export_current_data():
     try:
         campaigns = Campaign.query.all()
         email_logs = EmailLog.query.all()
+        users = User.query.all()
         
         campaign_data = [campaign.to_dict() for campaign in campaigns]
+        user_data = [user.to_dict() for user in users]
         
         log_data = []
         for log in email_logs:
@@ -593,8 +1150,10 @@ def export_current_data():
             })
         
         return jsonify({
+            'users': user_data,
             'campaigns': campaign_data,
             'email_logs': log_data,
+            'total_users': len(user_data),
             'total_campaigns': len(campaign_data),
             'total_logs': len(log_data),
             'export_time': datetime.now().isoformat()
@@ -602,14 +1161,36 @@ def export_current_data():
     except Exception as e:
         return jsonify({'error': str(e)})
 
-# API ROUTES
+# API ROUTES (Enhanced with user awareness)
 @app.route('/api/dashboard-stats')
+@login_required
 def dashboard_stats():
     try:
-        total_campaigns = Campaign.query.count()
-        active_campaigns = Campaign.query.filter_by(status='active').count()
-        successful_emails = EmailLog.query.filter_by(status='sent').count()
-        total_emails = EmailLog.query.count()
+        if current_user.is_admin():
+            # Admin sees all stats
+            total_campaigns = Campaign.query.count()
+            active_campaigns = Campaign.query.filter_by(status='active').count()
+            successful_emails = EmailLog.query.filter_by(status='sent').count()
+            total_emails = EmailLog.query.count()
+        else:
+            # Users see only their stats
+            user_campaigns = Campaign.query.filter_by(user_id=current_user.id)
+            campaign_ids = [c.id for c in user_campaigns]
+            
+            total_campaigns = user_campaigns.count()
+            active_campaigns = user_campaigns.filter_by(status='active').count()
+            
+            if campaign_ids:
+                successful_emails = EmailLog.query.filter(
+                    EmailLog.campaign_id.in_(campaign_ids),
+                    EmailLog.status == 'sent'
+                ).count()
+                total_emails = EmailLog.query.filter(
+                    EmailLog.campaign_id.in_(campaign_ids)
+                ).count()
+            else:
+                successful_emails = 0
+                total_emails = 0
         
         success_rate = (successful_emails / total_emails * 100) if total_emails > 0 else 0
         
@@ -629,10 +1210,17 @@ def dashboard_stats():
         })
 
 @app.route('/api/campaigns', methods=['GET', 'POST'])
+@login_required
 def campaigns():
     if request.method == 'GET':
         try:
-            all_campaigns = Campaign.query.all()
+            if current_user.is_admin():
+                # Admin sees all campaigns
+                all_campaigns = Campaign.query.all()
+            else:
+                # Users see only their campaigns
+                all_campaigns = Campaign.query.filter_by(user_id=current_user.id).all()
+            
             return jsonify([campaign.to_dict() for campaign in all_campaigns])
         except Exception as e:
             logger.error(f"Error fetching campaigns: {str(e)}")
@@ -640,6 +1228,14 @@ def campaigns():
 
     elif request.method == 'POST':
         try:
+            # Check campaign limit
+            user_campaign_count = Campaign.query.filter_by(user_id=current_user.id).count()
+            if user_campaign_count >= current_user.get_campaign_limit():
+                return jsonify({
+                    'success': False, 
+                    'message': f'Campaign limit reached. {current_user.role.title()} accounts can have {current_user.get_campaign_limit()} campaigns.'
+                }), 400
+
             data = request.get_json()
             
             # Validate required fields
@@ -652,7 +1248,7 @@ def campaigns():
             if provider not in SMTP_PROVIDERS:
                 return jsonify({'success': False, 'message': 'Invalid provider'}), 400
 
-            # Create campaign
+            # Create campaign for current user
             campaign = Campaign(
                 name=data['name'],
                 email=data['email'],
@@ -664,13 +1260,13 @@ def campaigns():
                 industry=data.get('industry', 'business'),
                 daily_volume=int(data.get('daily_volume', 10)),
                 warmup_days=int(data.get('warmup_days', 30)),
-                user_id=1
+                user_id=current_user.id
             )
 
             db.session.add(campaign)
             db.session.commit()
 
-            logger.info(f"Campaign created: {campaign.name}")
+            logger.info(f"Campaign created: {campaign.name} for user {current_user.username}")
             return jsonify({'success': True, 'message': 'Campaign created successfully', 'campaign': campaign.to_dict()})
 
         except Exception as e:
@@ -679,16 +1275,25 @@ def campaigns():
             return jsonify({'success': False, 'message': f'Failed to create campaign: {str(e)}'}), 500
 
 @app.route('/api/campaigns/<int:campaign_id>', methods=['GET', 'PUT', 'DELETE'])
+@login_required
 def campaign_detail(campaign_id):
     try:
         campaign = db.session.get(Campaign, campaign_id)
         if not campaign:
             return jsonify({'error': 'Campaign not found'}), 404
 
+        # Check ownership (non-admin users can only access their campaigns)
+        if not current_user.is_admin() and campaign.user_id != current_user.id:
+            return jsonify({'error': 'Access denied'}), 403
+
         if request.method == 'GET':
             return jsonify(campaign.to_dict())
 
         elif request.method == 'PUT':
+            # Demo users cannot modify campaigns
+            if current_user.is_demo():
+                return jsonify({'error': 'Demo accounts cannot modify campaigns'}), 403
+                
             data = request.get_json()
             updateable_fields = ['name', 'daily_volume', 'warmup_days', 'industry']
             for field in updateable_fields:
@@ -700,6 +1305,10 @@ def campaign_detail(campaign_id):
             return jsonify({'success': True, 'message': 'Campaign updated', 'campaign': campaign.to_dict()})
 
         elif request.method == 'DELETE':
+            # Demo users cannot delete campaigns
+            if current_user.is_demo():
+                return jsonify({'error': 'Demo accounts cannot delete campaigns'}), 403
+                
             db.session.delete(campaign)
             db.session.commit()
             return jsonify({'success': True, 'message': 'Campaign deleted'})
@@ -709,17 +1318,22 @@ def campaign_detail(campaign_id):
         return jsonify({'success': False, 'message': 'Operation failed'}), 500
 
 @app.route('/api/campaigns/<int:campaign_id>/start', methods=['POST'])
+@login_required
 def start_campaign(campaign_id):
     try:
         campaign = db.session.get(Campaign, campaign_id)
         if not campaign:
             return jsonify({'success': False, 'message': 'Campaign not found'}), 404
 
+        # Check ownership
+        if not current_user.is_admin() and campaign.user_id != current_user.id:
+            return jsonify({'error': 'Access denied'}), 403
+
         campaign.status = 'active'
         campaign.updated_at = datetime.utcnow()
         db.session.commit()
         
-        logger.info(f"Campaign {campaign_id} started successfully")
+        logger.info(f"Campaign {campaign_id} started by user {current_user.username}")
         return jsonify({'success': True, 'message': 'Campaign started successfully'})
 
     except Exception as e:
@@ -727,11 +1341,16 @@ def start_campaign(campaign_id):
         return jsonify({'success': False, 'message': str(e)}), 500
 
 @app.route('/api/campaigns/<int:campaign_id>/pause', methods=['POST'])
+@login_required
 def pause_campaign(campaign_id):
     try:
         campaign = db.session.get(Campaign, campaign_id)
         if not campaign:
             return jsonify({'error': 'Campaign not found'}), 404
+
+        # Check ownership
+        if not current_user.is_admin() and campaign.user_id != current_user.id:
+            return jsonify({'error': 'Access denied'}), 403
 
         campaign.status = 'paused'
         campaign.updated_at = datetime.utcnow()
@@ -744,11 +1363,16 @@ def pause_campaign(campaign_id):
         return jsonify({'success': False, 'message': 'Failed to pause campaign'}), 500
 
 @app.route('/api/campaigns/<int:campaign_id>/stats')
+@login_required
 def get_campaign_stats(campaign_id):
     try:
         campaign = db.session.get(Campaign, campaign_id)
         if not campaign:
             return jsonify({'error': 'Campaign not found'}), 404
+        
+        # Check ownership
+        if not current_user.is_admin() and campaign.user_id != current_user.id:
+            return jsonify({'error': 'Access denied'}), 403
         
         total_emails = EmailLog.query.filter_by(campaign_id=campaign_id).count()
         sent_emails = EmailLog.query.filter_by(campaign_id=campaign_id, status='sent').count()
@@ -779,6 +1403,7 @@ def get_campaign_stats(campaign_id):
         return jsonify({'error': 'Failed to fetch stats'}), 500
 
 @app.route('/api/validate-smtp', methods=['POST'])
+@login_required
 def validate_smtp():
     """Enhanced SMTP validation with real connection testing"""
     try:
@@ -797,7 +1422,10 @@ def validate_smtp():
         if 'amazon_ses' in provider and not username.startswith('AKIA'):
             return jsonify({'success': False, 'message': 'Amazon SES username should start with AKIA'}), 400
         
-        # Real SMTP connection test
+        # Real SMTP connection test (skip for demo users)
+        if current_user.is_demo():
+            return jsonify({'success': True, 'message': 'SMTP validation successful (demo mode)'})
+        
         try:
             smtp_config = SMTP_PROVIDERS[provider]
             server = smtplib.SMTP(smtp_config['host'], smtp_config['port'])
@@ -844,7 +1472,7 @@ def handle_exception(e):
     logger.error(f"Unhandled exception: {str(e)}")
     return jsonify({'error': 'An unexpected error occurred'}), 500
 
-# Enhanced Database initialization with PostgreSQL migration support
+# Enhanced Database initialization with Authentication
 def init_db():
     with app.app_context():
         try:
@@ -855,22 +1483,31 @@ def init_db():
             db_url = os.environ.get('DATABASE_URL', '').strip()
             is_postgresql = db_url and not db_url.startswith('sqlite')
             
-            # Create default user if doesn't exist
-            if User.query.count() == 0:
-                admin = User(
+            # Create default admin user if doesn't exist
+            admin_user = User.query.filter_by(role='admin').first()
+            if not admin_user:
+                admin_user = User(
                     username='admin',
                     email='admin@kexy.com',
-                    password_hash=generate_password_hash('admin123')
+                    password_hash=generate_password_hash('admin123'),
+                    role='admin',
+                    email_verified=True,
+                    is_active=True
                 )
-                db.session.add(admin)
+                db.session.add(admin_user)
                 db.session.commit()
-                logger.info("✅ Default admin user created")
+                logger.info("✅ Default admin user created (admin@kexy.com / admin123)")
+            
+            # Create demo user
+            create_demo_user()
             
             if is_postgresql:
                 logger.info("🚀 PostgreSQL database initialized successfully - ENTERPRISE READY!")
                 logger.info("📊 Automatic migration completed - Your data is now enterprise-grade")
+                logger.info("🔐 Authentication system enabled - Multi-user support active")
             else:
                 logger.info("✅ SQLite database initialized successfully")
+                logger.info("🔐 Authentication system enabled")
             
             logger.info("🔧 Database initialization completed")
             
@@ -887,8 +1524,9 @@ if __name__ == '__main__':
     # Start background scheduler
     start_warmup_scheduler()
     
-    logger.info("🚀 Starting KEXY Email Warmup System - Enhanced PostgreSQL Version")
+    logger.info("🚀 Starting KEXY Email Warmup System - Enhanced Authentication Version")
     logger.info(f"📧 Running on port {port}")
-    logger.info("🔧 All features enabled: SMTP validation, scheduling, analytics, PostgreSQL migration")
+    logger.info("🔧 All features enabled: Authentication, SMTP validation, scheduling, analytics, PostgreSQL migration")
+    logger.info("👤 Default accounts: admin@kexy.com (admin123) | demo user available")
     
     app.run(host='0.0.0.0', port=port, debug=False)
