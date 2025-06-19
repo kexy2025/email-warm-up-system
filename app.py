@@ -20,65 +20,95 @@ app = Flask(__name__)
 CORS(app)
 
 # Logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 # Configuration
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key')
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
 
-# 🚀 RAILWAY-COMPATIBLE DATABASE CONFIG - FIXED!
+# Railway-compatible database configuration
 database_url = os.environ.get('DATABASE_URL', '').strip()
 if database_url and not database_url.startswith('sqlite'):
-    # Use PostgreSQL if provided
     if database_url.startswith('postgres://'):
         database_url = database_url.replace('postgres://', 'postgresql://', 1)
     app.config['SQLALCHEMY_DATABASE_URI'] = database_url
     logger.info("🔧 Using PostgreSQL database")
 else:
-    # Use CURRENT DIRECTORY for SQLite (Railway safe)
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///warmup.db'
-    logger.info("🔧 Using SQLite in app directory")
+    logger.info("🔧 Using SQLite database in app directory")
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'pool_pre_ping': True,
+    'pool_recycle': 300,
+}
 
 # Initialize database
 db = SQLAlchemy(app)
 
-# SMTP Providers Configuration
+# Enhanced SMTP Providers Configuration
 SMTP_PROVIDERS = {
+    'gmail': {
+        'host': 'smtp.gmail.com',
+        'port': 587,
+        'name': 'Gmail',
+        'help_text': 'For Gmail: Enable 2-Factor Authentication and generate an App Password. Use your Gmail address as username.'
+    },
+    'outlook': {
+        'host': 'smtp-mail.outlook.com',
+        'port': 587,
+        'name': 'Outlook/Hotmail',
+        'help_text': 'For Outlook: Enable 2-Factor Authentication and generate an App Password. Use your Outlook email as username.'
+    },
+    'yahoo': {
+        'host': 'smtp.mail.yahoo.com',
+        'port': 587,
+        'name': 'Yahoo Mail',
+        'help_text': 'For Yahoo: Enable 2-Factor Authentication and generate an App Password for Mail.'
+    },
     'amazon_ses_us_east_1': {
         'host': 'email-smtp.us-east-1.amazonaws.com',
         'port': 587,
         'name': 'Amazon SES (US East 1)',
-        'help_text': 'Amazon SES (US East 1): Use IAM Access Key ID as username and Secret Access Key as password'
+        'help_text': 'Amazon SES: Use IAM Access Key ID as username and Secret Access Key as password.'
     },
     'amazon_ses_us_west_2': {
         'host': 'email-smtp.us-west-2.amazonaws.com',
         'port': 587,
         'name': 'Amazon SES (US West 2)',
-        'help_text': 'Amazon SES (US West 2): Use IAM Access Key ID as username and Secret Access Key as password'
+        'help_text': 'Amazon SES: Use IAM Access Key ID as username and Secret Access Key as password.'
     },
-    'gmail': {
-        'host': 'smtp.gmail.com',
+    'amazon_ses_eu_west_1': {
+        'host': 'email-smtp.eu-west-1.amazonaws.com',
         'port': 587,
-        'name': 'Gmail',
-        'help_text': 'For Gmail: Enable 2-Factor Authentication and generate an App Password'
+        'name': 'Amazon SES (EU West 1)',
+        'help_text': 'Amazon SES: Use IAM Access Key ID as username and Secret Access Key as password.'
     },
-    'outlook': {
-        'host': 'smtp-mail.outlook.com',
+    'sendgrid': {
+        'host': 'smtp.sendgrid.net',
         'port': 587,
-        'name': 'Outlook',
-        'help_text': 'For Outlook: Enable 2-Factor Authentication and generate an App Password'
+        'name': 'SendGrid',
+        'help_text': 'SendGrid: Use "apikey" as username and your SendGrid API key as password.'
+    },
+    'mailgun': {
+        'host': 'smtp.mailgun.org',
+        'port': 587,
+        'name': 'Mailgun',
+        'help_text': 'Mailgun: Use your Mailgun SMTP username and password from your domain settings.'
     }
 }
 
-# Email Content Types and Templates
+# Enhanced Email Content Templates
 EMAIL_CONTENT_TYPES = {
     'follow_up': {
         'subject_templates': [
             "Following up on our {topic} discussion",
             "Quick follow-up: {topic}",
-            "Re: {topic} - Next steps"
+            "Re: {topic} - Next steps",
+            "Thoughts on our {topic} conversation"
         ],
         'body_template': """Hi {recipient_name},
 
@@ -95,7 +125,8 @@ Best regards,
         'subject_templates': [
             "{industry} Weekly Update - {date}",
             "Latest {industry} Trends and Insights",
-            "Your {industry} Newsletter - Week of {date}"
+            "Your {industry} Newsletter - Week of {date}",
+            "Weekly {industry} Roundup"
         ],
         'body_template': """Hello {recipient_name},
 
@@ -104,11 +135,11 @@ Welcome to this week's {industry} newsletter!
 {main_content}
 
 Key highlights this week:
-• Industry developments
-• Market insights
-• Upcoming events
+• Industry developments and market trends
+• New opportunities and insights
+• Upcoming events and webinars
 
-Stay tuned for more updates!
+Thank you for your continued interest!
 
 Best regards,
 {sender_name}"""
@@ -117,7 +148,8 @@ Best regards,
         'subject_templates': [
             "Partnership opportunity in {industry}",
             "Exploring collaboration possibilities",
-            "Business inquiry - {topic}"
+            "Business inquiry - {topic}",
+            "Potential collaboration in {industry}"
         ],
         'body_template': """Dear {recipient_name},
 
@@ -136,7 +168,8 @@ Best regards,
         'subject_templates': [
             "Project update: {topic}",
             "Progress report - {topic}",
-            "Quick update on {topic}"
+            "Quick update on {topic}",
+            "{topic} - Latest developments"
         ],
         'body_template': """Hi {recipient_name},
 
@@ -151,7 +184,7 @@ Thanks,
     }
 }
 
-# Warmup Recipients Pool
+# Enhanced Warmup Recipients Pool
 WARMUP_RECIPIENTS = [
     {"email": "sarah.marketing@business-network.com", "name": "Sarah Chen", "industry": "marketing", "responds": True},
     {"email": "mike.tech@innovation-hub.com", "name": "Mike Rodriguez", "industry": "technology", "responds": True},
@@ -160,7 +193,9 @@ WARMUP_RECIPIENTS = [
     {"email": "lisa.healthcare@wellness-corp.com", "name": "Lisa Johnson", "industry": "healthcare", "responds": True},
     {"email": "robert.education@learning-solutions.com", "name": "Robert Wilson", "industry": "education", "responds": True},
     {"email": "emily.retail@commerce-network.com", "name": "Emily Davis", "industry": "retail", "responds": True},
-    {"email": "james.realestate@property-pros.com", "name": "James Miller", "industry": "real_estate", "responds": True}
+    {"email": "james.realestate@property-pros.com", "name": "James Miller", "industry": "real_estate", "responds": True},
+    {"email": "alex.startup@entrepreneur-hub.com", "name": "Alex Parker", "industry": "technology", "responds": True},
+    {"email": "maria.design@creative-studio.com", "name": "Maria Lopez", "industry": "marketing", "responds": True}
 ]
 
 # Database Models
@@ -170,7 +205,10 @@ class User(db.Model):
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    campaigns = db.relationship('Campaign', backref='user', lazy=True)
+    campaigns = db.relationship('Campaign', backref='user', lazy=True, cascade='all, delete-orphan')
+
+    def __repr__(self):
+        return f''
 
 class Campaign(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -202,10 +240,13 @@ class Campaign(db.Model):
             'warmup_days': self.warmup_days,
             'status': self.status,
             'emails_sent': self.emails_sent,
-            'success_rate': self.success_rate,
+            'success_rate': round(self.success_rate, 1),
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
+
+    def __repr__(self):
+        return f''
 
 class EmailLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -216,16 +257,40 @@ class EmailLog(db.Model):
     error_message = db.Column(db.Text)
     sent_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+    def __repr__(self):
+        return f''
+
 # Email Generation Functions
 def generate_fallback_content(content_type, industry, recipient_name, sender_name):
-    """Generate fallback email content when AI is unavailable"""
-    fallback_content = {
-        'follow_up': f"I've been thinking about our conversation regarding {industry} trends and wanted to share some additional insights that might be valuable for your current projects.",
-        'newsletter': f"This week in {industry}, we've seen some interesting developments that I thought you'd find relevant to your work.",
-        'inquiry': f"I've been following your work in {industry} and believe there might be some synergies between our organizations that we could explore.",
-        'update': f"I wanted to keep you informed about the progress we've been making in {industry} and how it might impact our collaboration."
+    """Generate fallback email content"""
+    content_variations = {
+        'follow_up': [
+            f"I've been thinking about our conversation regarding {industry} trends and wanted to share some additional insights.",
+            f"Following up on our {industry} discussion, I found some interesting developments that might interest you.",
+            f"Hope you're doing well! I wanted to continue our conversation about {industry} opportunities."
+        ],
+        'newsletter': [
+            f"This week in {industry}, we've seen some exciting developments that I thought you'd find valuable.",
+            f"Here are the latest {industry} trends and insights that are shaping the industry.",
+            f"Our weekly {industry} roundup brings you the most important updates and opportunities."
+        ],
+        'inquiry': [
+            f"I've been following your work in {industry} and believe there might be some great synergies.",
+            f"Your expertise in {industry} caught my attention, and I'd love to explore potential collaboration.",
+            f"I'm reaching out because of your reputation in {industry} and a potential opportunity."
+        ],
+        'update': [
+            f"Wanted to keep you informed about the latest progress in {industry} developments.",
+            f"Here's a quick update on the {industry} project we've been working on.",
+            f"Sharing some important updates about our {industry} initiatives."
+        ]
     }
-    return fallback_content.get(content_type, "I hope you're having a great week and wanted to reach out with some thoughts on our industry.")
+    
+    variations = content_variations.get(content_type, [
+        "Hope you're having a great week! Wanted to reach out with some thoughts."
+    ])
+    
+    return random.choice(variations)
 
 def process_spintax(text):
     """Process spintax variations {option1|option2|option3}"""
@@ -240,9 +305,9 @@ def process_spintax(text):
     
     return text
 
-# Email Sending Functions
+# Enhanced Email Sending Functions
 def send_warmup_email(campaign_id, recipient_email, recipient_name, content_type):
-    """Send actual warmup email"""
+    """Send warmup email with enhanced error handling"""
     try:
         with app.app_context():
             campaign = db.session.get(Campaign, campaign_id)
@@ -252,12 +317,12 @@ def send_warmup_email(campaign_id, recipient_email, recipient_name, content_type
             
             logger.info(f"Generating email content for {recipient_email}")
             
-            # Generate AI content (fallback for now)
+            # Generate content
             ai_content = generate_fallback_content(
                 content_type, 
-                campaign.industry, 
+                campaign.industry or 'business', 
                 recipient_name, 
-                "Team"
+                campaign.email.split('@')[0].title()
             )
             
             # Get email template
@@ -266,23 +331,23 @@ def send_warmup_email(campaign_id, recipient_email, recipient_name, content_type
             
             # Generate subject
             subject = process_spintax(subject_template.format(
-                topic=campaign.industry,
-                industry=campaign.industry.replace('_', ' ').title(),
+                topic=campaign.industry or 'business',
+                industry=(campaign.industry or 'business').replace('_', ' ').title(),
                 date=datetime.now().strftime('%B %d')
             ))
             
             # Generate email body
             email_body = template['body_template'].format(
                 recipient_name=recipient_name,
-                topic=campaign.industry.replace('_', ' '),
-                industry=campaign.industry.replace('_', ' ').title(),
+                topic=(campaign.industry or 'business').replace('_', ' '),
+                industry=(campaign.industry or 'business').replace('_', ' ').title(),
                 main_content=ai_content,
                 sender_name=campaign.email.split('@')[0].title()
             )
             
-            logger.info(f"Attempting to send email to {recipient_email} with subject: {subject}")
+            logger.info(f"Attempting to send email to {recipient_email}")
             
-            # Send email using campaign SMTP settings
+            # Send email
             success = send_smtp_email(campaign, recipient_email, subject, email_body)
             
             # Log the email
@@ -291,17 +356,9 @@ def send_warmup_email(campaign_id, recipient_email, recipient_name, content_type
             if success:
                 # Update campaign stats
                 campaign.emails_sent += 1
-                
-                # Calculate success rate
-                total_attempts = EmailLog.query.filter_by(campaign_id=campaign_id).count()
-                successful_attempts = EmailLog.query.filter_by(campaign_id=campaign_id, status='sent').count()
-                if total_attempts > 0:
-                    campaign.success_rate = (successful_attempts / total_attempts) * 100
-                else:
-                    campaign.success_rate = 0.0
-                
+                update_campaign_success_rate(campaign_id)
                 db.session.commit()
-                logger.info(f"Email sent successfully and stats updated - Success rate: {campaign.success_rate}%")
+                logger.info(f"Email sent successfully to {recipient_email}")
                 
             return success
         
@@ -312,7 +369,7 @@ def send_warmup_email(campaign_id, recipient_email, recipient_name, content_type
         return False
 
 def send_smtp_email(campaign, recipient_email, subject, body):
-    """Send email using campaign's SMTP settings"""
+    """Send email with enhanced error handling"""
     try:
         logger.info(f"Connecting to SMTP server: {campaign.smtp_host}:{campaign.smtp_port}")
         
@@ -326,17 +383,22 @@ def send_smtp_email(campaign, recipient_email, subject, body):
         # Connect and send
         server = smtplib.SMTP(campaign.smtp_host, campaign.smtp_port)
         server.starttls()
-        
-        logger.info(f"Authenticating with username: {campaign.smtp_username}")
         server.login(campaign.smtp_username, campaign.smtp_password)
-        
-        logger.info(f"Sending email from {campaign.email} to {recipient_email}")
         server.send_message(msg)
         server.quit()
         
         logger.info(f"Email sent successfully to {recipient_email}")
         return True
         
+    except smtplib.SMTPAuthenticationError as e:
+        logger.error(f"SMTP Authentication failed: {str(e)}")
+        return False
+    except smtplib.SMTPRecipientsRefused as e:
+        logger.error(f"Recipient refused: {str(e)}")
+        return False
+    except smtplib.SMTPServerDisconnected as e:
+        logger.error(f"SMTP server disconnected: {str(e)}")
+        return False
     except Exception as e:
         logger.error(f"SMTP send failed: {str(e)}")
         return False
@@ -359,15 +421,29 @@ def log_email(campaign_id, recipient, subject, status, error_message=None):
     except Exception as e:
         logger.error(f"Error logging email: {str(e)}")
 
+def update_campaign_success_rate(campaign_id):
+    """Update campaign success rate"""
+    try:
+        total_attempts = EmailLog.query.filter_by(campaign_id=campaign_id).count()
+        successful_attempts = EmailLog.query.filter_by(campaign_id=campaign_id, status='sent').count()
+        
+        campaign = db.session.get(Campaign, campaign_id)
+        if campaign and total_attempts > 0:
+            campaign.success_rate = (successful_attempts / total_attempts) * 100
+        else:
+            campaign.success_rate = 0.0
+            
+    except Exception as e:
+        logger.error(f"Error updating success rate: {str(e)}")
+
 def calculate_campaign_progress(campaign):
     """Calculate campaign progress percentage"""
-    days_elapsed = (datetime.utcnow() - campaign.created_at).days
-    total_days = campaign.warmup_days
-    return min(int((days_elapsed / total_days) * 100), 100)
-
-def get_daily_volume_for_campaign(campaign):
-    """Calculate daily email volume"""
-    return campaign.daily_volume
+    try:
+        days_elapsed = (datetime.utcnow() - campaign.created_at).days
+        total_days = campaign.warmup_days
+        return min(int((days_elapsed / total_days) * 100), 100)
+    except:
+        return 0
 
 # Background Scheduler Functions
 def process_warmup_campaigns():
@@ -378,42 +454,46 @@ def process_warmup_campaigns():
             logger.info(f"🔄 Processing {len(active_campaigns)} active campaigns")
             
             for campaign in active_campaigns:
-                daily_volume = get_daily_volume_for_campaign(campaign)
-                
-                # Check if we've already sent emails today
-                today = datetime.utcnow().date()
-                today_emails = EmailLog.query.filter(
-                    EmailLog.campaign_id == campaign.id,
-                    EmailLog.sent_at >= today,
-                    EmailLog.status == 'sent'
-                ).count()
-                
-                emails_to_send = max(0, daily_volume - today_emails)
-                logger.info(f"📧 Campaign '{campaign.name}': {emails_to_send} emails to send today (sent: {today_emails}/{daily_volume})")
-                
-                if emails_to_send > 0:
-                    # Select random recipients
-                    recipients = random.sample(WARMUP_RECIPIENTS, min(emails_to_send, len(WARMUP_RECIPIENTS)))
+                try:
+                    # Check daily quota
+                    today = datetime.utcnow().date()
+                    today_emails = EmailLog.query.filter(
+                        EmailLog.campaign_id == campaign.id,
+                        EmailLog.sent_at >= today,
+                        EmailLog.status == 'sent'
+                    ).count()
                     
-                    for recipient in recipients:
-                        # Select random content type
-                        content_type = random.choice(list(EMAIL_CONTENT_TYPES.keys()))
-                        
-                        # Send email
-                        success = send_warmup_email(
-                            campaign.id,
-                            recipient['email'],
-                            recipient['name'],
-                            content_type
+                    emails_to_send = max(0, campaign.daily_volume - today_emails)
+                    
+                    if emails_to_send > 0:
+                        # Select random recipients
+                        recipients = random.sample(
+                            WARMUP_RECIPIENTS, 
+                            min(emails_to_send, len(WARMUP_RECIPIENTS))
                         )
-                        logger.info(f"📨 Email to {recipient['email']}: {'✅ SUCCESS' if success else '❌ FAILED'}")
                         
-                        # Delay between emails
-                        time.sleep(random.uniform(5, 10))
-                    
-                    logger.info(f"✅ Sent {len(recipients)} warmup emails for campaign '{campaign.name}'")
-                else:
-                    logger.info(f"⏭️ Campaign '{campaign.name}': Daily quota already reached")
+                        for recipient in recipients:
+                            content_type = random.choice(list(EMAIL_CONTENT_TYPES.keys()))
+                            
+                            success = send_warmup_email(
+                                campaign.id,
+                                recipient['email'],
+                                recipient['name'],
+                                content_type
+                            )
+                            
+                            logger.info(f"📨 Email to {recipient['email']}: {'✅' if success else '❌'}")
+                            
+                            # Delay between emails
+                            time.sleep(random.uniform(30, 60))
+                        
+                        logger.info(f"✅ Processed {len(recipients)} emails for '{campaign.name}'")
+                    else:
+                        logger.info(f"⏭️ '{campaign.name}': Daily quota reached")
+                        
+                except Exception as e:
+                    logger.error(f"Error processing campaign {campaign.id}: {str(e)}")
+                    continue
     
     except Exception as e:
         logger.error(f"❌ Error processing warmup campaigns: {str(e)}")
@@ -423,23 +503,20 @@ def start_warmup_scheduler():
     def run_scheduler():
         logger.info("🚀 Warmup scheduler thread started")
         
-        # Schedule email sending every 2 minutes for testing
-        schedule.every(2).minutes.do(process_warmup_campaigns)
+        # Schedule email sending every 5 minutes for testing, every hour for production
+        schedule.every(5).minutes.do(process_warmup_campaigns)
         
-        scheduler_running = True
-        while scheduler_running:
+        while True:
             try:
                 schedule.run_pending()
-                time.sleep(60)  # Check every minute for scheduled tasks
-                
+                time.sleep(60)
             except Exception as e:
                 logger.error(f"❌ Scheduler error: {str(e)}")
-                time.sleep(60)  # Continue running even if there's an error
+                time.sleep(60)
     
-    # Start scheduler in background thread
     scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
     scheduler_thread.start()
-    logger.info("⏰ Warmup scheduler started - emails every 2 minutes")
+    logger.info("⏰ Warmup scheduler started")
 
 # MAIN ROUTES
 @app.route('/')
@@ -450,9 +527,14 @@ def index():
 def dashboard():
     return render_template('dashboard.html')
 
-@app.route('/test')
-def test_route():
-    return jsonify({'status': 'working', 'timestamp': datetime.now().isoformat()})
+@app.route('/health')
+def health_check():
+    """Health check endpoint for Railway"""
+    return jsonify({
+        'status': 'healthy',
+        'timestamp': datetime.now().isoformat(),
+        'version': '1.0.0'
+    })
 
 # API ROUTES
 @app.route('/api/dashboard-stats')
@@ -499,7 +581,7 @@ def campaigns():
             if not all(field in data for field in required_fields):
                 return jsonify({'success': False, 'message': 'Missing required fields'}), 400
 
-            # Get provider configuration
+            # Validate provider
             provider = data['provider']
             if provider not in SMTP_PROVIDERS:
                 return jsonify({'success': False, 'message': 'Invalid provider'}), 400
@@ -513,9 +595,9 @@ def campaigns():
                 smtp_port=SMTP_PROVIDERS[provider]['port'],
                 smtp_username=data['username'],
                 smtp_password=data['password'],
-                industry=data.get('industry', 'general'),
-                daily_volume=data.get('daily_volume', 10),
-                warmup_days=data.get('warmup_days', 30),
+                industry=data.get('industry', 'business'),
+                daily_volume=int(data.get('daily_volume', 10)),
+                warmup_days=int(data.get('warmup_days', 30)),
                 user_id=1
             )
 
@@ -528,9 +610,9 @@ def campaigns():
         except Exception as e:
             logger.error(f"Campaign creation error: {str(e)}")
             db.session.rollback()
-            return jsonify({'success': False, 'message': 'Failed to create campaign'}), 500
+            return jsonify({'success': False, 'message': f'Failed to create campaign: {str(e)}'}), 500
 
-@app.route('/api/campaigns/<int:campaign_id>', methods=['GET', 'PUT', 'DELETE'])
+@app.route('/api/campaigns/', methods=['GET', 'PUT', 'DELETE'])
 def campaign_detail(campaign_id):
     try:
         campaign = db.session.get(Campaign, campaign_id)
@@ -560,7 +642,7 @@ def campaign_detail(campaign_id):
         logger.error(f"Campaign detail error: {str(e)}")
         return jsonify({'success': False, 'message': 'Operation failed'}), 500
 
-@app.route('/api/campaigns/<int:campaign_id>/start', methods=['POST'])
+@app.route('/api/campaigns//start', methods=['POST'])
 def start_campaign(campaign_id):
     try:
         campaign = db.session.get(Campaign, campaign_id)
@@ -578,7 +660,7 @@ def start_campaign(campaign_id):
         logger.error(f"Error starting campaign: {str(e)}")
         return jsonify({'success': False, 'message': str(e)}), 500
 
-@app.route('/api/campaigns/<int:campaign_id>/pause', methods=['POST'])
+@app.route('/api/campaigns//pause', methods=['POST'])
 def pause_campaign(campaign_id):
     try:
         campaign = db.session.get(Campaign, campaign_id)
@@ -595,33 +677,7 @@ def pause_campaign(campaign_id):
         logger.error(f"Campaign pause error: {str(e)}")
         return jsonify({'success': False, 'message': 'Failed to pause campaign'}), 500
 
-@app.route('/api/campaigns/<int:campaign_id>/logs')
-def get_campaign_logs(campaign_id):
-    try:
-        campaign = db.session.get(Campaign, campaign_id)
-        if not campaign:
-            return jsonify({'error': 'Campaign not found'}), 404
-        
-        logs = EmailLog.query.filter_by(campaign_id=campaign_id).order_by(EmailLog.sent_at.desc()).limit(100).all()
-        
-        log_data = []
-        for log in logs:
-            log_data.append({
-                'id': log.id,
-                'recipient': log.recipient,
-                'subject': log.subject,
-                'status': log.status,
-                'sent_at': log.sent_at.isoformat() if log.sent_at else None,
-                'error_message': log.error_message
-            })
-        
-        return jsonify({'logs': log_data})
-        
-    except Exception as e:
-        logger.error(f"Error fetching campaign logs: {str(e)}")
-        return jsonify({'error': 'Failed to fetch logs'}), 500
-
-@app.route('/api/campaigns/<int:campaign_id>/stats')
+@app.route('/api/campaigns//stats')
 def get_campaign_stats(campaign_id):
     try:
         campaign = db.session.get(Campaign, campaign_id)
@@ -658,19 +714,37 @@ def get_campaign_stats(campaign_id):
 
 @app.route('/api/validate-smtp', methods=['POST'])
 def validate_smtp():
+    """Enhanced SMTP validation with real connection testing"""
     try:
         data = request.get_json()
         provider = data.get('provider')
+        username = data.get('username', '')
+        password = data.get('password', '')
+        
+        if not all([provider, username, password]):
+            return jsonify({'success': False, 'message': 'Missing required fields'}), 400
         
         if provider not in SMTP_PROVIDERS:
             return jsonify({'success': False, 'message': 'Invalid provider'}), 400
         
-        # Basic validation
-        username = data.get('username', '')
+        # Provider-specific validation
         if 'amazon_ses' in provider and not username.startswith('AKIA'):
             return jsonify({'success': False, 'message': 'Amazon SES username should start with AKIA'}), 400
         
-        return jsonify({'success': True, 'message': 'Validation successful'})
+        # Real SMTP connection test
+        try:
+            smtp_config = SMTP_PROVIDERS[provider]
+            server = smtplib.SMTP(smtp_config['host'], smtp_config['port'])
+            server.starttls()
+            server.login(username, password)
+            server.quit()
+            
+            return jsonify({'success': True, 'message': 'SMTP connection validated successfully'})
+            
+        except smtplib.SMTPAuthenticationError:
+            return jsonify({'success': False, 'message': 'Authentication failed. Check your credentials.'}), 400
+        except Exception as e:
+            return jsonify({'success': False, 'message': f'Connection failed: {str(e)}'}), 400
 
     except Exception as e:
         logger.error(f"SMTP validation error: {str(e)}")
@@ -689,117 +763,6 @@ def get_providers():
         }
     })
 
-@app.route('/api/warmup-strategies')
-def get_warmup_strategies():
-    return jsonify({
-        'strategies': {
-            'steady': {
-                'name': 'Steady',
-                'description': 'Consistent daily volume',
-                'daily_volume': 10,
-                'duration_days': 30
-            },
-            'progressive': {
-                'name': 'Progressive',
-                'description': 'Gradual increase',
-                'daily_volume': 15,
-                'duration_days': 30
-            }
-        }
-    })
-
-# DEBUG ROUTES
-@app.route('/api/debug/create-test-data', methods=['GET', 'POST'])
-def create_test_data():
-    try:
-        # Create test campaign if doesn't exist
-        if Campaign.query.count() == 0:
-            campaign = Campaign(
-                name='Test1', 
-                email='scott@getkexy.com', 
-                provider='amazon_ses_us_east_1',
-                smtp_host='email-smtp.us-east-1.amazonaws.com',
-                smtp_username='AKIAUZ6NT5LNL5DRY6AZ',
-                smtp_password='test-password',
-                industry='marketing',
-                status='active', 
-                emails_sent=10,
-                user_id=1
-            )
-            db.session.add(campaign)
-            db.session.commit()
-            
-            # Create test email logs
-            for i in range(10):
-                log = EmailLog(
-                    campaign_id=campaign.id, 
-                    recipient=f'test{i}@example.com', 
-                    subject=f'Test Email {i}',
-                    status='sent'
-                )
-                db.session.add(log)
-            db.session.commit()
-            
-        return jsonify({'success': True, 'message': 'Test data created'})
-    except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
-
-@app.route('/api/debug/system-status')
-def system_status():
-    try:
-        return jsonify({
-            'database_connected': True,
-            'total_campaigns': Campaign.query.count(),
-            'active_campaigns': Campaign.query.filter_by(status='active').count(),
-            'total_email_logs': EmailLog.query.count(),
-            'server_time': datetime.now().isoformat(),
-            'scheduler_running': True
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/debug/force-send/<int:campaign_id>', methods=['POST'])
-def force_send_now(campaign_id):
-    """Force send an email right now for testing"""
-    try:
-        with app.app_context():
-            campaign = db.session.get(Campaign, campaign_id)
-            if not campaign:
-                return jsonify({'error': 'Campaign not found'}), 404
-            
-            if campaign.status != 'active':
-                campaign.status = 'active'
-                db.session.commit()
-            
-            recipient = random.choice(WARMUP_RECIPIENTS)
-            content_type = random.choice(list(EMAIL_CONTENT_TYPES.keys()))
-            
-            logger.info(f"🚀 FORCE SENDING email to {recipient['email']} for campaign {campaign.name}")
-            
-            success = send_warmup_email(
-                campaign_id,
-                recipient['email'],
-                recipient['name'],
-                content_type
-            )
-            
-            latest_log = EmailLog.query.filter_by(campaign_id=campaign_id).order_by(EmailLog.sent_at.desc()).first()
-            
-            return jsonify({
-                'success': success,
-                'recipient': recipient['email'],
-                'campaign_status': campaign.status,
-                'content_type': content_type,
-                'latest_log_status': latest_log.status if latest_log else 'No logs found',
-                'latest_log_error': latest_log.error_message if latest_log else None,
-                'message': f"Email {'✅ sent successfully' if success else '❌ failed to send'}",
-                'timestamp': datetime.now().isoformat()
-            })
-        
-    except Exception as e:
-        logger.error(f"Force send error: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-
 # Error Handlers
 @app.errorhandler(404)
 def not_found(error):
@@ -810,7 +773,12 @@ def internal_error(error):
     logger.error(f"Internal error: {str(error)}")
     return jsonify({'error': 'Internal server error'}), 500
 
-# Initialize database and create default user
+@app.errorhandler(Exception)
+def handle_exception(e):
+    logger.error(f"Unhandled exception: {str(e)}")
+    return jsonify({'error': 'An unexpected error occurred'}), 500
+
+# Database initialization
 def init_db():
     with app.app_context():
         db.create_all()
@@ -819,14 +787,14 @@ def init_db():
         if User.query.count() == 0:
             admin = User(
                 username='admin',
-                email='admin@example.com',
+                email='admin@kexy.com',
                 password_hash=generate_password_hash('admin123')
             )
             db.session.add(admin)
             db.session.commit()
             logger.info("Default admin user created")
         
-        logger.info("Database initialized")
+        logger.info("Database initialized successfully")
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
@@ -837,8 +805,23 @@ if __name__ == '__main__':
     # Start background scheduler
     start_warmup_scheduler()
     
-    logger.info("🚀 Starting KEXY Email Warmup System - COMPLETE VERSION")
-    logger.info("📧 Email sending every 2 minutes for active campaigns")
-    logger.info("🔧 All features enabled: SMTP, scheduling, analytics")
+    logger.info("🚀 Starting KEXY Email Warmup System - Enhanced Version")
+    logger.info(f"📧 Running on port {port}")
+    logger.info("🔧 All features enabled: SMTP validation, scheduling, analytics")
+    
+    app.run(host='0.0.0.0', port=port, debug=False)
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 8080))
+    
+    # Initialize database
+    init_db()
+    
+    # Start background scheduler
+    start_warmup_scheduler()
+    
+    logger.info("🚀 Starting KEXY Email Warmup System - Enhanced Version")
+    logger.info(f"📧 Running on port {port}")
+    logger.info("🔧 All features enabled: SMTP validation, scheduling, analytics")
     
     app.run(host='0.0.0.0', port=port, debug=False)
