@@ -412,7 +412,7 @@ def start_warmup_scheduler():
     def run_scheduler():
         logger.info("🚀 Warmup scheduler thread started")
         
-        # Schedule email sending every 5 minutes for testing
+        # Schedule email sending every 2 minutes for testing
         schedule.every(2).minutes.do(process_warmup_campaigns)
         
         scheduler_running = True
@@ -428,7 +428,7 @@ def start_warmup_scheduler():
     # Start scheduler in background thread
     scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
     scheduler_thread.start()
-    logger.info("⏰ Warmup scheduler started - emails every 5 minutes")
+    logger.info("⏰ Warmup scheduler started - emails every 2 minutes")
 
 # MAIN ROUTES
 @app.route('/')
