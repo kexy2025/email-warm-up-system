@@ -34,50 +34,6 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
 # SMTP Providers Configuration
-SMTP_
-Copy
-Save to Notion
-Request aborted
-
-and don't miss anything!
-🚀 HERE'S YOUR COMPLETE app.py WITH ALL EMAIL SENDING FUNCTIONALITY:
-
-Copy#!/usr/bin/env python3
-
-import os
-import logging
-from datetime import datetime, timedelta
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-import random
-import threading
-import time
-import schedule
-from flask import Flask, render_template, request, jsonify
-from flask_sqlalchemy import SQLAlchemy
-from flask_cors import CORS
-from werkzeug.security import generate_password_hash, check_password_hash
-
-# Initialize Flask app
-app = Flask(__name__)
-CORS(app)
-
-# Logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Configuration
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key')
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///warmup.db')
-if app.config['SQLALCHEMY_DATABASE_URI'].startswith('postgres://'):
-    app.config['SQLALCHEMY_DATABASE_URI'] = app.config['SQLALCHEMY_DATABASE_URI'].replace('postgres://', 'postgresql://', 1)
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
-# Initialize database
-db = SQLAlchemy(app)
-
-# SMTP Providers Configuration
 SMTP_PROVIDERS = {
     'amazon_ses_us_east_1': {
         'host': 'email-smtp.us-east-1.amazonaws.com',
