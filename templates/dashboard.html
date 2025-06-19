@@ -3,10 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Email Warmup Dashboard</title>
+    <title>KEXY Email Warmup Dashboard</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
-    <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
     <style>
         .gradient-bg {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -73,6 +72,10 @@
             background-color: #cce5ff;
             color: #004085;
         }
+        .status-created {
+            background-color: #e2e3e5;
+            color: #495057;
+        }
         .modal {
             display: none;
             position: fixed;
@@ -124,6 +127,30 @@
         .tab-button.active {
             border-bottom-color: #667eea;
             color: #667eea;
+        }
+        .toast {
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            color: white;
+            font-weight: 500;
+            opacity: 0;
+            transform: translateX(100%);
+            transition: all 0.3s ease;
+        }
+        .toast.show {
+            opacity: 1;
+            transform: translateX(0);
+        }
+        .toast-success {
+            background-color: #28a745;
+        }
+        .toast-error {
+            background-color: #dc3545;
+        }
+        .toast-warning {
+            background-color: #ffc107;
+            color: #212529;
         }
     </style>
 </head>
@@ -307,15 +334,8 @@
                                         <option value="">Select Email Provider</option>
                                         <option value="gmail">Gmail</option>
                                         <option value="outlook">Outlook/Hotmail</option>
-                                        <option value="yahoo">Yahoo Mail</option>
                                         <option value="amazon_ses_us_east_1">Amazon SES (US East 1)</option>
                                         <option value="amazon_ses_us_west_2">Amazon SES (US West 2)</option>
-                                        <option value="amazon_ses_eu_west_1">Amazon SES (EU West 1)</option>
-                                        <option value="amazon_ses_eu_central_1">Amazon SES (EU Central 1)</option>
-                                        <option value="amazon_ses_ap_southeast_1">Amazon SES (Asia Pacific - Singapore)</option>
-                                        <option value="amazon_ses_ap_southeast_2">Amazon SES (Asia Pacific - Sydney)</option>
-                                        <option value="amazon_ses_ap_northeast_1">Amazon SES (Asia Pacific - Tokyo)</option>
-                                        <option value="amazon_ses_ca_central_1">Amazon SES (Canada Central)</option>
                                         <option value="custom_smtp">Custom SMTP</option>
                                     </select>
 
@@ -465,7 +485,7 @@
             <div id="modal-content">
                 <!-- Modal content will be populated dynamically -->
             </div>
-            <div class="flex justify-end mt-4">
+            <div class="flex justify-end mt-4 space-x-2">
                 <button onclick="closeModal()" class="bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400 transition-colors">
                     Close
                 </button>
@@ -473,15 +493,422 @@
         </div>
     </div>
 
-    <script src="/static/js/dashboard.js"></script>
+    <script>
+        // Global variables
+        let campaigns = [];
+        let providers = {};
+
+        // Initialize page
+        document.addEventListener('DOMContentLoaded', function() {
+            loadDashboardStats();
+            loadCampaigns();
+            loadProviders();
+        });
+
+        // Tab switching functionality
+        function switchTab(tabName) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelectorAll('.tab-button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            // Show selected tab
+            document.getElementById(tabName + '-tab').classList.add('active');
+            
+            // Set active button (find the clicked button)
+            const buttons = document.querySelectorAll('.tab-button');
+            buttons.forEach(btn => {
+                if (btn.textContent.toLowerCase().includes(tabName)) {
+                    btn.classList.add('active');
+                }
+            });
+        }
+
+        // Provider change handler
+        function handleProviderChange(provider) {
+            const helpDiv = document.getElementById('provider-help');
+            const customFields = document.getElementById('custom-smtp-fields');
+            const usernameLabel = document.getElementById('username-label');
+            const passwordLabel = document.getElementById('password-label');
+            
+            if (provider === 'custom_smtp') {
+                customFields.style.display = 'block';
+            } else {
+                customFields.style.display = 'none';
+            }
+            
+            // Provider-specific help text
+            const helpTexts = {
+                'gmail': 'For Gmail: Enable 2-Factor Authentication and generate an App Password. Use your Gmail address as username.',
+                'outlook': 'For Outlook: Enable 2-Factor Authentication and generate an App Password. Use your Outlook email as username.',
+                'amazon_ses_us_east_1': 'Amazon SES (US East 1): Use IAM Access Key ID as username and Secret Access Key as password.',
+                'amazon_ses_us_west_2': 'Amazon SES (US West 2): Use IAM Access Key ID as username and Secret Access Key as password.',
+                'custom_smtp': 'Enter your custom SMTP server details. Make sure to use the correct host, port, and authentication method.'
+            };
+            
+            if (provider && helpTexts[provider]) {
+                helpDiv.innerHTML = helpTexts[provider];
+                helpDiv.classList.add('show');
+            } else {
+                helpDiv.classList.remove('show');
+            }
+            
+            // Update labels based on provider
+            if (provider.includes('amazon_ses')) {
+                usernameLabel.textContent = 'Access Key ID';
+                passwordLabel.textContent = 'Secret Access Key';
+            } else {
+                usernameLabel.textContent = 'Username/Email';
+                passwordLabel.textContent = 'Password/App Password';
+            }
+        }
+
+        // Form submission handler
+        document.getElementById('campaign-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            showLoading(true);
+            
+            const formData = new FormData(e.target);
+            const data = Object.fromEntries(formData.entries());
+            
+            try {
+                const response = await fetch('/api/campaigns', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showToast('Campaign created successfully!', 'success');
+                    e.target.reset();
+                    switchTab('campaigns');
+                    loadCampaigns();
+                    loadDashboardStats();
+                } else {
+                    showToast('Error: ' + result.message, 'error');
+                }
+            } catch (error) {
+                console.error('Campaign creation error:', error);
+                showToast('Network error: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        });
+
+        // Load dashboard stats
+        async function loadDashboardStats() {
+            try {
+                const response = await fetch('/api/dashboard-stats');
+                const stats = await response.json();
+                
+                document.getElementById('total-campaigns').textContent = stats.total_campaigns || 0;
+                document.getElementById('active-campaigns').textContent = stats.active_campaigns || 0;
+                document.getElementById('emails-sent').textContent = stats.emails_sent || 0;
+                document.getElementById('success-rate').textContent = (stats.success_rate || 0) + '%';
+            } catch (error) {
+                console.error('Failed to load dashboard stats:', error);
+            }
+        }
+
+        // Load campaigns
+        async function loadCampaigns() {
+            try {
+                const response = await fetch('/api/campaigns');
+                campaigns = await response.json() || [];
+                
+                const container = document.getElementById('campaigns-container');
+                if (campaigns.length === 0) {
+                    container.innerHTML = `
+                        <div class="text-center py-12 text-gray-500">
+                            <i class="fas fa-inbox text-4xl mb-4"></i>
+                            <p class="text-lg">No campaigns yet. Create your first campaign to get started!</p>
+                            <button onclick="switchTab('create')" class="mt-4 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+                                Create Campaign
+                            </button>
+                        </div>
+                    `;
+                } else {
+                    container.innerHTML = campaigns.map(campaign => `
+                        <div class="border rounded-lg p-6 mb-4 hover:shadow-md transition-shadow">
+                            <div class="flex justify-between items-start">
+                                <div class="flex-1">
+                                    <h3 class="text-lg font-medium text-gray-900">${campaign.name || 'Untitled Campaign'}</h3>
+                                    <p class="text-sm text-gray-600 mt-1">${campaign.email || 'No email'}</p>
+                                    <div class="mt-2 flex items-center space-x-4">
+                                        <span class="status-badge status-${campaign.status || 'created'}">
+                                            ${(campaign.status || 'created').toUpperCase()}
+                                        </span>
+                                        <span class="text-xs text-gray-500">
+                                            ${campaign.provider || 'No provider'} • ${campaign.industry || 'No industry'}
+                                        </span>
+                                    </div>
+                                </div>
+                                <div class="flex flex-col items-end text-right">
+                                    <div class="text-sm text-gray-600">
+                                        ${campaign.emails_sent || 0} emails sent
+                                    </div>
+                                    <div class="text-sm text-gray-600">
+                                        ${campaign.success_rate || 0}% success rate
+                                    </div>
+                                    <div class="mt-2 flex space-x-2">
+                                        ${campaign.status === 'active' ? 
+                                            `<button onclick="pauseCampaign(${campaign.id})" class="text-yellow-600 hover:text-yellow-700">
+                                                <i class="fas fa-pause"></i>
+                                            </button>` :
+                                            `<button onclick="startCampaign(${campaign.id})" class="text-green-600 hover:text-green-700">
+                                                <i class="fas fa-play"></i>
+                                            </button>`
+                                        }
+                                        <button onclick="viewCampaign(${campaign.id})" class="text-blue-600 hover:text-blue-700">
+                                            <i class="fas fa-eye"></i>
+                                        </button>
+                                        <button onclick="deleteCampaign(${campaign.id})" class="text-red-600 hover:text-red-700">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `).join('');
+                }
+            } catch (error) {
+                console.error('Failed to load campaigns:', error);
+                document.getElementById('campaigns-container').innerHTML = `
+                    <div class="text-center py-12 text-red-500">
+                        <i class="fas fa-exclamation-triangle text-4xl mb-4"></i>
+                        <p class="text-lg">Failed to load campaigns</p>
+                    </div>
+                `;
+            }
+        }
+
+        // Load email providers
+        async function loadProviders() {
+            try {
+                const response = await fetch('/api/providers');
+                const data = await response.json();
+                providers = data.providers || {};
+            } catch (error) {
+                console.error('Failed to load providers:', error);
+            }
+        }
+
+        // Campaign actions
+        async function startCampaign(campaignId) {
+            if (!confirm('Are you sure you want to start this campaign?')) return;
+            
+            try {
+                const response = await fetch(`/api/campaigns/${campaignId}/start`, {
+                    method: 'POST'
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    showToast('Campaign started successfully!', 'success');
+                    loadCampaigns();
+                    loadDashboardStats();
+                } else {
+                    showToast('Error: ' + result.message, 'error');
+                }
+            } catch (error) {
+                showToast('Failed to start campaign', 'error');
+            }
+        }
+
+        async function pauseCampaign(campaignId) {
+            if (!confirm('Are you sure you want to pause this campaign?')) return;
+            
+            try {
+                const response = await fetch(`/api/campaigns/${campaignId}/pause`, {
+                    method: 'POST'
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    showToast('Campaign paused successfully!', 'success');
+                    loadCampaigns();
+                    loadDashboardStats();
+                } else {
+                    showToast('Error: ' + result.message, 'error');
+                }
+            } catch (error) {
+                showToast('Failed to pause campaign', 'error');
+            }
+        }
+
+        async function deleteCampaign(campaignId) {
+            if (!confirm('Are you sure you want to delete this campaign? This action cannot be undone.')) return;
+            
+            try {
+                const response = await fetch(`/api/campaigns/${campaignId}`, {
+                    method: 'DELETE'
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    showToast('Campaign deleted successfully!', 'success');
+                    loadCampaigns();
+                    loadDashboardStats();
+                } else {
+                    showToast('Error: ' + result.message, 'error');
+                }
+            } catch (error) {
+                showToast('Failed to delete campaign', 'error');
+            }
+        }
+
+        async function viewCampaign(campaignId) {
+            try {
+                const response = await fetch(`/api/campaigns/${campaignId}`);
+                const campaign = await response.json();
+                
+                const modal = document.getElementById('campaign-modal');
+                const content = document.getElementById('modal-content');
+                
+                content.innerHTML = `
+                    <div class="space-y-4">
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <h4 class="font-medium text-gray-900">Campaign Name</h4>
+                                <p class="text-sm text-gray-600">${campaign.name || 'N/A'}</p>
+                            </div>
+                            <div>
+                                <h4 class="font-medium text-gray-900">Email Address</h4>
+                                <p class="text-sm text-gray-600">${campaign.email || 'N/A'}</p>
+                            </div>
+                            <div>
+                                <h4 class="font-medium text-gray-900">Provider</h4>
+                                <p class="text-sm text-gray-600">${campaign.provider || 'N/A'}</p>
+                            </div>
+                            <div>
+                                <h4 class="font-medium text-gray-900">Status</h4>
+                                <span class="status-badge status-${campaign.status || 'created'}">${(campaign.status || 'created').toUpperCase()}</span>
+                            </div>
+                            <div>
+                                <h4 class="font-medium text-gray-900">Daily Volume</h4>
+                                <p class="text-sm text-gray-600">${campaign.daily_volume || 0} emails/day</p>
+                            </div>
+                            <div>
+                                <h4 class="font-medium text-gray-900">Warmup Days</h4>
+                                <p class="text-sm text-gray-600">${campaign.warmup_days || 0} days</p>
+                            </div>
+                            <div>
+                                <h4 class="font-medium text-gray-900">Emails Sent</h4>
+                                <p class="text-sm text-gray-600">${campaign.emails_sent || 0}</p>
+                            </div>
+                            <div>
+                                <h4 class="font-medium text-gray-900">Success Rate</h4>
+                                <p class="text-sm text-gray-600">${campaign.success_rate || 0}%</p>
+                            </div>
+                        </div>
+                        <div>
+                            <h4 class="font-medium text-gray-900">Created</h4>
+                            <p class="text-sm text-gray-600">${campaign.created_at ? new Date(campaign.created_at).toLocaleString() : 'N/A'}</p>
+                        </div>
+                    </div>
+                `;
+                
+                modal.classList.add('show');
+            } catch (error) {
+                showToast('Failed to load campaign details', 'error');
+            }
+        }
+
+        // Test SMTP connection
+        async function testConnection() {
+            const provider = document.getElementById('email-provider').value;
+            const username = document.getElementById('smtp-username').value;
+            const password = document.getElementById('smtp-password').value;
+            
+            if (!provider || !username || !password) {
+                showToast('Please fill in provider, username, and password first', 'warning');
+                return;
+            }
+            
+            showLoading(true);
+            
+            try {
+                const response = await fetch('/api/validate-smtp', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        provider: provider,
+                        username: username,
+                        password: password
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showToast('SMTP validation successful!', 'success');
+                } else {
+                    showToast('SMTP validation failed: ' + result.message, 'error');
+                }
+            } catch (error) {
+                showToast('SMTP validation error: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Utility functions
+        function showLoading(show) {
+            const overlay = document.getElementById('loading-overlay');
+            if (show) {
+                overlay.classList.add('show');
+            } else {
+                overlay.classList.remove('show');
+            }
+        }
+
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            toast.innerHTML = `
+                <i class="fas fa-${type === 'success' ? 'check' : type === 'error' ? 'times' : 'exclamation'} mr-2"></i>
+                ${message}
+            `;
+            
+            container.appendChild(toast);
+            
+            // Show toast
+            setTimeout(() => toast.classList.add('show'), 100);
+            
+            // Hide and remove toast
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => container.removeChild(toast), 300);
+            }, 5000);
+        }
+
+        function closeModal() {
+            document.getElementById('campaign-modal').classList.remove('show');
+        }
+
+        function logout() {
+            if (confirm('Are you sure you want to logout?')) {
+                showToast('Logout functionality not implemented yet', 'warning');
+            }
+        }
+
+        // Close modal when clicking outside
+        document.getElementById('campaign-modal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeModal();
+            }
+        });
+    </script>
 </body>
 </html>
-    <script id="html_badge_script1">
-        window.__genspark_remove_badge_link = "https://www.genspark.ai/api/html_badge/" +
-            "remove_badge?token=To%2FBnjzloZ3UfQdcSaYfDjlzdRyOm7MrsssqFIHkdI92KHscFudpAbFoucEiVb0TNtYyQrlgrDNE1%2FtbdfNgUhKqvghQsaxiFvjsunvq5VX0RCnF%2B9DYMo%2FvZ3uk4oJb04MT2N9Tv%2FZgIVpB7GDT6STSH4o2Q4vf%2Fp0rpHPa%2FET8AZbZxeNC2yxTqHeTYwf8pWj%2F7IRDClGluVQPFySMNpY33QskpQT73PzBWgQOzZla4qtCcaafW6RtbVhPd5j4YQ%2FTli2l0LV%2BYDU1mrYofUOYnJJldGo7N57UBFqY7IMWiMG7PVMbMXeupfIeyPxV9J9k3CCTDJMbKjy4nyMrErXqduxDEZwWAM8NH56gFtxgrUbdmkIns1Y%2BbCb%2FwcMAO3988GENvUj%2BXxSqiX6awwBoCadUB0xMRk21GRHSd%2B5Kw5P1t36KTI4sDtEU1GXZnGls5pbhFFBbxEtCLEQ%2FO8D3bVCVlFBFUsrWmBkf7a5M%2BQdr3qP3YODkyH3lA8DxCBVPxkx%2B1q60zMvwI643Dw%3D%3D";
-        window.__genspark_locale = "en-US";
-        window.__genspark_token = "To/BnjzloZ3UfQdcSaYfDjlzdRyOm7MrsssqFIHkdI92KHscFudpAbFoucEiVb0TNtYyQrlgrDNE1/tbdfNgUhKqvghQsaxiFvjsunvq5VX0RCnF+9DYMo/vZ3uk4oJb04MT2N9Tv/ZgIVpB7GDT6STSH4o2Q4vf/p0rpHPa/ET8AZbZxeNC2yxTqHeTYwf8pWj/7IRDClGluVQPFySMNpY33QskpQT73PzBWgQOzZla4qtCcaafW6RtbVhPd5j4YQ/Tli2l0LV+YDU1mrYofUOYnJJldGo7N57UBFqY7IMWiMG7PVMbMXeupfIeyPxV9J9k3CCTDJMbKjy4nyMrErXqduxDEZwWAM8NH56gFtxgrUbdmkIns1Y+bCb/wcMAO3988GENvUj+XxSqiX6awwBoCadUB0xMRk21GRHSd+5Kw5P1t36KTI4sDtEU1GXZnGls5pbhFFBbxEtCLEQ/O8D3bVCVlFBFUsrWmBkf7a5M+Qdr3qP3YODkyH3lA8DxCBVPxkx+1q60zMvwI643Dw==";
-    </script>
-    
-    <script id="html_notice_dialog_script" src="https://www.genspark.ai/notice_dialog.js"></script>
-    
