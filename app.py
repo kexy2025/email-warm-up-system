@@ -969,6 +969,39 @@ def start_campaign(campaign_id):
         db.session.rollback()
         return jsonify({'success': False, 'message': f'Error: {str(e)}'}), 500
 
+@app.route('/api/dashboard-stats')
+def dashboard_stats():
+    try:
+        # Get campaign counts
+        total_campaigns = Campaign.query.count()
+        active_campaigns = Campaign.query.filter_by(status='active').count()
+        
+        # Get REAL email stats from EmailLog table
+        total_email_attempts = EmailLog.query.count()
+        successful_emails = EmailLog.query.filter_by(status='sent').count()
+        
+        # Calculate actual success rate
+        if total_email_attempts > 0:
+            success_rate = (successful_emails / total_email_attempts) * 100
+        else:
+            success_rate = 0.0
+
+        return jsonify({
+            'total_campaigns': total_campaigns,
+            'active_campaigns': active_campaigns,
+            'emails_sent': successful_emails,
+            'success_rate': round(success_rate, 1)
+        })
+
+    except Exception as e:
+        logger.error(f"Dashboard stats error: {str(e)}")
+        return jsonify({
+            'total_campaigns': 0,
+            'active_campaigns': 0,
+            'emails_sent': 0,
+            'success_rate': 0.0
+        })
+
 @app.route('/api/campaigns/<int:campaign_id>/pause', methods=['POST'])
 def pause_campaign(campaign_id):
     try:
