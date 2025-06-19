@@ -762,6 +762,13 @@ def create_default_user():
         logger.error(f"Error creating default user: {str(e)}")
 
 # ROUTES SECTION
+@app.route('/test')
+def test_route():
+    return "App is working!"
+
+@app.route('/')
+def index():
+    # ... rest of your code
 @app.route('/')
 def index():
     try:
