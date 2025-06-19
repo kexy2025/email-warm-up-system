@@ -2,6 +2,28 @@
 
 import os
 import logging
+
+# Add this debugging section right at the start
+print("🚀 Starting app.py...")
+print(f"📍 Current working directory: {os.getcwd()}")
+print(f"🔧 Python path: {os.environ.get('PYTHONPATH', 'Not set')}")
+print(f"🌐 PORT environment variable: {os.environ.get('PORT', 'Not set')}")
+print(f"🗄️ DATABASE_URL exists: {bool(os.environ.get('DATABASE_URL'))}")
+
+try:
+    from datetime import datetime, timedelta
+    print("✅ datetime imported successfully")
+except Exception as e:
+    print(f"❌ datetime import failed: {e}")
+
+try:
+    import smtplib
+    print("✅ smtplib imported successfully")  
+except Exception as e:
+    print(f"❌ smtplib import failed: {e}")
+
+# Continue with your existing imports...
+
 from datetime import datetime, timedelta
 import smtplib
 from email.mime.text import MIMEText
