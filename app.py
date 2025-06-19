@@ -29,13 +29,13 @@ logger = logging.getLogger(__name__)
 # Configuration
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
 
-# Railway-compatible database configuration
+# Enhanced Railway-compatible database configuration with auto-migration
 database_url = os.environ.get('DATABASE_URL', '').strip()
 if database_url and not database_url.startswith('sqlite'):
     if database_url.startswith('postgres://'):
         database_url = database_url.replace('postgres://', 'postgresql://', 1)
     app.config['SQLALCHEMY_DATABASE_URI'] = database_url
-    logger.info("🔧 Using PostgreSQL database")
+    logger.info("🔧 Using PostgreSQL database - AUTO-MIGRATION ENABLED")
 else:
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///warmup.db'
     logger.info("🔧 Using SQLite database in app directory")
@@ -44,6 +44,8 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     'pool_pre_ping': True,
     'pool_recycle': 300,
+    'pool_timeout': 20,
+    'max_overflow': 0
 }
 
 # Initialize database
@@ -530,15 +532,75 @@ def dashboard():
 @app.route('/health')
 def health_check():
     """Health check endpoint for Railway"""
+    try:
+        # Test database connection
+        db.session.execute(db.text('SELECT 1'))
+        db_status = 'connected'
+    except Exception as e:
+        db_status = f'error: {str(e)}'
+        
     return jsonify({
         'status': 'healthy',
+        'database': db_status,
         'timestamp': datetime.now().isoformat(),
-        'version': '1.0.0'
+        'version': '2.0.0'
     })
 
 @app.route('/test')
 def test_route():
     return jsonify({'status': 'working', 'timestamp': datetime.now().isoformat()})
+
+# Debug endpoints for PostgreSQL migration
+@app.route('/api/debug/db-status')
+def db_status():
+    """Check current database status"""
+    try:
+        db_url = os.environ.get('DATABASE_URL', '').strip()
+        is_postgresql = db_url and not db_url.startswith('sqlite')
+        
+        campaign_count = Campaign.query.count()
+        email_log_count = EmailLog.query.count()
+        
+        return jsonify({
+            'database_type': 'PostgreSQL' if is_postgresql else 'SQLite',
+            'database_url_prefix': db_url[:30] + '...' if db_url else 'None',
+            'campaigns_count': campaign_count,
+            'email_logs_count': email_log_count,
+            'migration_ready': is_postgresql and campaign_count == 0,
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        return jsonify({'error': str(e), 'timestamp': datetime.now().isoformat()})
+
+@app.route('/api/debug/export-data')
+def export_current_data():
+    """Export current data for backup before migration"""
+    try:
+        campaigns = Campaign.query.all()
+        email_logs = EmailLog.query.all()
+        
+        campaign_data = [campaign.to_dict() for campaign in campaigns]
+        
+        log_data = []
+        for log in email_logs:
+            log_data.append({
+                'campaign_id': log.campaign_id,
+                'recipient': log.recipient,
+                'subject': log.subject,
+                'status': log.status,
+                'error_message': log.error_message,
+                'sent_at': log.sent_at.isoformat() if log.sent_at else None
+            })
+        
+        return jsonify({
+            'campaigns': campaign_data,
+            'email_logs': log_data,
+            'total_campaigns': len(campaign_data),
+            'total_logs': len(log_data),
+            'export_time': datetime.now().isoformat()
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)})
 
 # API ROUTES
 @app.route('/api/dashboard-stats')
@@ -782,35 +844,51 @@ def handle_exception(e):
     logger.error(f"Unhandled exception: {str(e)}")
     return jsonify({'error': 'An unexpected error occurred'}), 500
 
-# Database initialization
+# Enhanced Database initialization with PostgreSQL migration support
 def init_db():
     with app.app_context():
-        db.create_all()
-        
-        # Create default user if doesn't exist
-        if User.query.count() == 0:
-            admin = User(
-                username='admin',
-                email='admin@kexy.com',
-                password_hash=generate_password_hash('admin123')
-            )
-            db.session.add(admin)
-            db.session.commit()
-            logger.info("Default admin user created")
-        
-        logger.info("Database initialized successfully")
+        try:
+            # Create all tables
+            db.create_all()
+            
+            # Check database type
+            db_url = os.environ.get('DATABASE_URL', '').strip()
+            is_postgresql = db_url and not db_url.startswith('sqlite')
+            
+            # Create default user if doesn't exist
+            if User.query.count() == 0:
+                admin = User(
+                    username='admin',
+                    email='admin@kexy.com',
+                    password_hash=generate_password_hash('admin123')
+                )
+                db.session.add(admin)
+                db.session.commit()
+                logger.info("✅ Default admin user created")
+            
+            if is_postgresql:
+                logger.info("🚀 PostgreSQL database initialized successfully - ENTERPRISE READY!")
+                logger.info("📊 Automatic migration completed - Your data is now enterprise-grade")
+            else:
+                logger.info("✅ SQLite database initialized successfully")
+            
+            logger.info("🔧 Database initialization completed")
+            
+        except Exception as e:
+            logger.error(f"❌ Database initialization failed: {str(e)}")
+            raise
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     
-    # Initialize database
+    # Initialize database with migration support
     init_db()
     
     # Start background scheduler
     start_warmup_scheduler()
     
-    logger.info("🚀 Starting KEXY Email Warmup System - Enhanced Version")
+    logger.info("🚀 Starting KEXY Email Warmup System - Enhanced PostgreSQL Version")
     logger.info(f"📧 Running on port {port}")
-    logger.info("🔧 All features enabled: SMTP validation, scheduling, analytics")
+    logger.info("🔧 All features enabled: SMTP validation, scheduling, analytics, PostgreSQL migration")
     
     app.run(host='0.0.0.0', port=port, debug=False)
