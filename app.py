@@ -38,7 +38,7 @@ class EmailLog(db.Model):
     status = db.Column(db.String(20))
     sent_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-# ROUTES - GUARANTEED TO WORK
+# ROUTES
 @app.route('/')
 def index():
     return render_template('dashboard.html')
@@ -117,15 +117,16 @@ def create_test_data():
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
 
-# Initialize database
-@app.before_first_request
-def create_tables():
-    db.create_all()
+# Initialize database on startup
+def init_db():
+    with app.app_context():
+        db.create_all()
+        logger.info("Database tables created")
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     
-    with app.app_context():
-        db.create_all()
+    # Initialize database
+    init_db()
     
     app.run(host='0.0.0.0', port=port, debug=False)
