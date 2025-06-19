@@ -208,7 +208,7 @@ class User(db.Model):
     campaigns = db.relationship('Campaign', backref='user', lazy=True, cascade='all, delete-orphan')
 
     def __repr__(self):
-        return f''
+        return f'<User {self.username}>'
 
 class Campaign(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -246,7 +246,7 @@ class Campaign(db.Model):
         }
 
     def __repr__(self):
-        return f''
+        return f'<Campaign {self.name}>'
 
 class EmailLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -258,7 +258,7 @@ class EmailLog(db.Model):
     sent_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     def __repr__(self):
-        return f''
+        return f'<EmailLog {self.recipient}>'
 
 # Email Generation Functions
 def generate_fallback_content(content_type, industry, recipient_name, sender_name):
@@ -536,6 +536,10 @@ def health_check():
         'version': '1.0.0'
     })
 
+@app.route('/test')
+def test_route():
+    return jsonify({'status': 'working', 'timestamp': datetime.now().isoformat()})
+
 # API ROUTES
 @app.route('/api/dashboard-stats')
 def dashboard_stats():
@@ -612,7 +616,7 @@ def campaigns():
             db.session.rollback()
             return jsonify({'success': False, 'message': f'Failed to create campaign: {str(e)}'}), 500
 
-@app.route('/api/campaigns/', methods=['GET', 'PUT', 'DELETE'])
+@app.route('/api/campaigns/<int:campaign_id>', methods=['GET', 'PUT', 'DELETE'])
 def campaign_detail(campaign_id):
     try:
         campaign = db.session.get(Campaign, campaign_id)
@@ -642,7 +646,7 @@ def campaign_detail(campaign_id):
         logger.error(f"Campaign detail error: {str(e)}")
         return jsonify({'success': False, 'message': 'Operation failed'}), 500
 
-@app.route('/api/campaigns//start', methods=['POST'])
+@app.route('/api/campaigns/<int:campaign_id>/start', methods=['POST'])
 def start_campaign(campaign_id):
     try:
         campaign = db.session.get(Campaign, campaign_id)
@@ -660,7 +664,7 @@ def start_campaign(campaign_id):
         logger.error(f"Error starting campaign: {str(e)}")
         return jsonify({'success': False, 'message': str(e)}), 500
 
-@app.route('/api/campaigns//pause', methods=['POST'])
+@app.route('/api/campaigns/<int:campaign_id>/pause', methods=['POST'])
 def pause_campaign(campaign_id):
     try:
         campaign = db.session.get(Campaign, campaign_id)
@@ -677,7 +681,7 @@ def pause_campaign(campaign_id):
         logger.error(f"Campaign pause error: {str(e)}")
         return jsonify({'success': False, 'message': 'Failed to pause campaign'}), 500
 
-@app.route('/api/campaigns//stats')
+@app.route('/api/campaigns/<int:campaign_id>/stats')
 def get_campaign_stats(campaign_id):
     try:
         campaign = db.session.get(Campaign, campaign_id)
@@ -795,21 +799,6 @@ def init_db():
             logger.info("Default admin user created")
         
         logger.info("Database initialized successfully")
-
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 8080))
-    
-    # Initialize database
-    init_db()
-    
-    # Start background scheduler
-    start_warmup_scheduler()
-    
-    logger.info("🚀 Starting KEXY Email Warmup System - Enhanced Version")
-    logger.info(f"📧 Running on port {port}")
-    logger.info("🔧 All features enabled: SMTP validation, scheduling, analytics")
-    
-    app.run(host='0.0.0.0', port=port, debug=False)
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
