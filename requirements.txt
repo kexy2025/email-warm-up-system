@@ -4,3 +4,4 @@ Flask-CORS==4.0.0
 Werkzeug==2.3.7
 schedule==1.2.0
 gunicorn==21.2.0
+psycopg2-binary==2.9.7
