@@ -738,12 +738,6 @@ def login():
         return redirect(url_for('dashboard'))
     return render_template('login.html')
 
-@app.route('/register')
-def register():
-    if current_user.is_authenticated:
-        return redirect(url_for('dashboard'))
-    return render_template('register.html')
-
 @app.route('/forgot-password')
 def forgot_password():
     if current_user.is_authenticated:
