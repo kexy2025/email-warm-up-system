@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 # Configuration
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key')
 
-# Persistent SQLite with Railway Volume
+# 🚀 RAILWAY-COMPATIBLE DATABASE CONFIG - FIXED!
 database_url = os.environ.get('DATABASE_URL', '').strip()
 if database_url and not database_url.startswith('sqlite'):
     # Use PostgreSQL if provided
@@ -35,12 +35,11 @@ if database_url and not database_url.startswith('sqlite'):
     app.config['SQLALCHEMY_DATABASE_URI'] = database_url
     logger.info("🔧 Using PostgreSQL database")
 else:
-    # Use persistent volume path for SQLite
-    db_path = os.environ.get('SQLITE_DB_PATH', '/data/warmup.db')
-    # Ensure directory exists
-    os.makedirs(os.path.dirname(db_path), exist_ok=True)
-    app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'
-    logger.info(f"🔧 Using persistent SQLite at: {db_path}")
+    # Use CURRENT DIRECTORY for SQLite (Railway safe)
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///warmup.db'
+    logger.info("🔧 Using SQLite in app directory")
+
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Initialize database
 db = SQLAlchemy(app)
@@ -839,7 +838,7 @@ if __name__ == '__main__':
     start_warmup_scheduler()
     
     logger.info("🚀 Starting KEXY Email Warmup System - COMPLETE VERSION")
-    logger.info("📧 Email sending every 5 minutes for active campaigns")
+    logger.info("📧 Email sending every 2 minutes for active campaigns")
     logger.info("🔧 All features enabled: SMTP, scheduling, analytics")
     
     app.run(host='0.0.0.0', port=port, debug=False)
