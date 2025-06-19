@@ -1643,8 +1643,6 @@ if __name__ == '__main__':
         logger.info("🔄 Using fallback timer-based scheduling")
     
     app.run(host='0.0.0.0', port=port, debug=False)
-🎯 Key Addition - Debug Route:
-The important new route I added is:
 
 Copy@app.route('/debug/env')
 def debug_env():
