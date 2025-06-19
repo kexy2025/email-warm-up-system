@@ -860,6 +860,24 @@ def health_check():
 def test_route():
     return jsonify({'status': 'working', 'timestamp': datetime.now().isoformat()})
 
+# *** NEW DEBUG ROUTE ***
+@app.route('/debug/env')
+def debug_env():
+    """Debug environment variables to troubleshoot DATABASE_URL detection"""
+    database_url = os.environ.get('DATABASE_URL', '')
+    return jsonify({
+        'DATABASE_URL_exists': bool(database_url),
+        'DATABASE_URL_length': len(database_url),
+        'DATABASE_URL_prefix': database_url[:50] + '...' if database_url else 'None',
+        'starts_with_postgres': database_url.startswith('postgres') if database_url else False,
+        'starts_with_postgresql': database_url.startswith('postgresql') if database_url else False,
+        'contains_postgres': 'postgres' in database_url.lower() if database_url else False,
+        'current_db_uri': app.config.get('SQLALCHEMY_DATABASE_URI', '')[:50] + '...',
+        'all_env_vars': [k for k in os.environ.keys() if 'DATA' in k.upper() or 'POSTGRES' in k.upper()],
+        'railway_vars': [k for k in os.environ.keys() if k.startswith('RAILWAY_')],
+        'timestamp': datetime.now().isoformat()
+    })
+
 # AUTHENTICATION API ROUTES
 @app.route('/api/auth/login', methods=['POST'])
 def api_login():
@@ -1603,3 +1621,22 @@ if __name__ == '__main__':
         logger.info("🔄 Using fallback timer-based scheduling")
     
     app.run(host='0.0.0.0', port=port, debug=False)
+🎯 Key Addition - Debug Route:
+The important new route I added is:
+
+Copy@app.route('/debug/env')
+def debug_env():
+    """Debug environment variables to troubleshoot DATABASE_URL detection"""
+    database_url = os.environ.get('DATABASE_URL', '')
+    return jsonify({
+        'DATABASE_URL_exists': bool(database_url),
+        'DATABASE_URL_length': len(database_url),
+        'DATABASE_URL_prefix': database_url[:50] + '...' if database_url else 'None',
+        'starts_with_postgres': database_url.startswith('postgres') if database_url else False,
+        'starts_with_postgresql': database_url.startswith('postgresql') if database_url else False,
+        'contains_postgres': 'postgres' in database_url.lower() if database_url else False,
+        'current_db_uri': app.config.get('SQLALCHEMY_DATABASE_URI', '')[:50] + '...',
+        'all_env_vars': [k for k in os.environ.keys() if 'DATA' in k.upper() or 'POSTGRES' in k.upper()],
+        'railway_vars': [k for k in os.environ.keys() if k.startswith('RAILWAY_')],
+        'timestamp': datetime.now().isoformat()
+    })
