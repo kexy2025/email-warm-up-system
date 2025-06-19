@@ -457,7 +457,7 @@ def start_warmup_scheduler():
         logger.info("🚀 Warmup scheduler thread started")
         
         # Schedule email sending every 5 minutes for testing
-        schedule.every(5).minutes.do(process_warmup_campaigns)
+        schedule.every(2).minutes.do(process_warmup_campaigns)
         
         scheduler_running = True
         while scheduler_running:
