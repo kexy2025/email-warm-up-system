@@ -45,11 +45,6 @@ def static_files(filename):
 
 # Logging setup - FIRST
 logging.basicConfig(level=logging.INFO)
-
-
-
-# Logging setup - FIRST
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Configuration
@@ -496,11 +491,20 @@ def send_warmup_email(campaign_id, recipient_email, recipient_name, content_type
             log_email(campaign_id, recipient_email, subject, 'sent' if success else 'failed')
             
             if success:
-                # Update campaign stats
+                # 🔧 FIXED: Update campaign stats properly
                 campaign.emails_sent += 1
                 campaign.progress = calculate_campaign_progress(campaign)
+                
+                # 🔧 FIXED: Calculate and update success rate correctly
+                total_attempts = EmailLog.query.filter_by(campaign_id=campaign_id).count()
+                successful_attempts = EmailLog.query.filter_by(campaign_id=campaign_id, status='sent').count()
+                if total_attempts > 0:
+                    campaign.success_rate = (successful_attempts / total_attempts) * 100
+                else:
+                    campaign.success_rate = 0.0
+                
                 db.session.commit()
-                logger.info(f"Email sent successfully and stats updated")
+                logger.info(f"Email sent successfully and stats updated - Success rate: {campaign.success_rate}%")
                 
             return success
         
@@ -1016,7 +1020,7 @@ def get_campaign_stats(campaign_id):
         if not campaign:
             return jsonify({'error': 'Campaign not found'}), 404
         
-        # Calculate stats
+        # 🔧 FIXED: Calculate stats from EmailLog table instead of campaign fields
         total_emails = EmailLog.query.filter_by(campaign_id=campaign_id).count()
         sent_emails = EmailLog.query.filter_by(campaign_id=campaign_id, status='sent').count()
         failed_emails = EmailLog.query.filter_by(campaign_id=campaign_id, status='failed').count()
@@ -1046,6 +1050,7 @@ def get_campaign_stats(campaign_id):
         logger.error(f"Error fetching campaign stats: {str(e)}")
         return jsonify({'error': 'Failed to fetch stats'}), 500
 
+# 🔧 MAIN FIX: Dashboard stats endpoint - corrected calculation
 @app.route('/api/dashboard-stats')
 def dashboard_stats():
     try:
@@ -1053,14 +1058,25 @@ def dashboard_stats():
         
         total_campaigns = len(all_campaigns)
         active_campaigns = len([c for c in all_campaigns if c.status == 'active'])
-        total_emails_sent = sum(c.emails_sent for c in all_campaigns)
-        avg_success_rate = sum(c.success_rate for c in all_campaigns) / total_campaigns if total_campaigns > 0 else 0
+        
+        # 🔧 FIXED: Calculate REAL success rate from EmailLog table
+        total_email_attempts = EmailLog.query.count()
+        successful_emails = EmailLog.query.filter_by(status='sent').count()
+        
+        # Calculate actual success rate
+        if total_email_attempts > 0:
+            success_rate = (successful_emails / total_email_attempts) * 100
+        else:
+            success_rate = 0.0
+        
+        # Get total emails sent from EmailLog (not campaign.emails_sent)
+        total_emails_sent = successful_emails
 
         return jsonify({
             'total_campaigns': total_campaigns,
             'active_campaigns': active_campaigns,
             'emails_sent': total_emails_sent,
-            'success_rate': round(avg_success_rate, 1)
+            'success_rate': round(success_rate, 1)
         })
 
     except Exception as e:
