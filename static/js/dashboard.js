@@ -205,3 +205,32 @@ let dashboard;
 document.addEventListener('DOMContentLoaded', function() {
     dashboard = new EmailWarmupDashboard();
 });
+
+// Add this function to your dashboard.js
+async loadAnalytics() {
+    try {
+        const response = await fetch('/api/campaigns/1/stats'); // Assuming campaign ID 1
+        const stats = await response.json();
+        
+        const analyticsContainer = document.querySelector('#analytics-tab .text-center');
+        if (analyticsContainer && stats) {
+            analyticsContainer.innerHTML = `
+                <div class="grid grid-cols-2 gap-6">
+                    <div class="bg-white p-6 rounded-lg shadow">
+                        <h3 class="text-lg font-bold">Campaign Performance</h3>
+                        <p>Total Emails: ${stats.total_emails}</p>
+                        <p>Success Rate: ${stats.success_rate}%</p>
+                        <p>Today's Emails: ${stats.today_emails}</p>
+                    </div>
+                    <div class="bg-white p-6 rounded-lg shadow">
+                        <h3 class="text-lg font-bold">Progress</h3>
+                        <p>Campaign Progress: ${stats.progress}%</p>
+                        <p>Daily Target: ${stats.daily_target}</p>
+                    </div>
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('Failed to load analytics:', error);
+    }
+}
