@@ -25,10 +25,22 @@ logger = logging.getLogger(__name__)
 
 # Configuration
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key')
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///warmup.db')
-if app.config['SQLALCHEMY_DATABASE_URI'].startswith('postgres://'):
-    app.config['SQLALCHEMY_DATABASE_URI'] = app.config['SQLALCHEMY_DATABASE_URI'].replace('postgres://', 'postgresql://', 1)
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# Persistent SQLite with Railway Volume
+database_url = os.environ.get('DATABASE_URL', '').strip()
+if database_url and not database_url.startswith('sqlite'):
+    # Use PostgreSQL if provided
+    if database_url.startswith('postgres://'):
+        database_url = database_url.replace('postgres://', 'postgresql://', 1)
+    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+    logger.info("🔧 Using PostgreSQL database")
+else:
+    # Use persistent volume path for SQLite
+    db_path = os.environ.get('SQLITE_DB_PATH', '/data/warmup.db')
+    # Ensure directory exists
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'
+    logger.info(f"🔧 Using persistent SQLite at: {db_path}")
 
 # Initialize database
 db = SQLAlchemy(app)
