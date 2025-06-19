@@ -92,14 +92,13 @@
                                     </span>
                                     {% endif %}
                                 </div>
-                                <a href="{{ url_for('profile') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                <a href="/profile" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
                                     <i class="fas fa-user mr-2"></i>Profile
                                 </a>
-                                <!-- REMOVED: Settings link that was causing the error -->
                                 <a href="/debug/env" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
                                     <i class="fas fa-bug mr-2"></i>Debug Info
                                 </a>
-                                <a href="{{ url_for('logout') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                <a href="#" onclick="handleLogout()" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 cursor-pointer">
                                     <i class="fas fa-sign-out-alt mr-2"></i>Logout
                                 </a>
                             </div>
@@ -178,6 +177,30 @@
                 menu.classList.add('hidden');
             }
         });
+
+        // Handle logout properly
+        function handleLogout() {
+            fetch('/api/auth/logout', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    window.location.href = '/login';
+                } else {
+                    // Fallback: redirect anyway
+                    window.location.href = '/login';
+                }
+            })
+            .catch(error => {
+                console.error('Logout error:', error);
+                // Fallback: redirect anyway
+                window.location.href = '/login';
+            });
+        }
 
         // Auto-hide flash messages
         setTimeout(function() {
