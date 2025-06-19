@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 KEXY Email Warmup System - Complete Application
-24/7 OPERATION - Business Hours Restriction REMOVED
+24/7 OPERATION with POSTGRES PERSISTENCE and APPLICATION CONTEXT FIX
 """
 
 import os
@@ -44,17 +44,33 @@ logger = logging.getLogger(__name__)
 # Configuration
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
 
-# BULLETPROOF DATABASE CONFIGURATION - FINAL VERSION
+# 🔧 FIXED DATABASE CONFIGURATION - POSTGRES PERSISTENCE
 def setup_database():
-    """Setup database with foolproof fallback"""
+    """Setup database with Postgres for persistence"""
     database_url = os.environ.get('DATABASE_URL', '').strip()
     
-    # Always use SQLite for reliability
-    logger.info("🔧 Using SQLite for maximum reliability")
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///warmup.db'
+    if database_url:
+        # Use the persistent Postgres database
+        logger.info("🔧 Using Postgres database for data persistence")
+        
+        # Fix postgres:// to postgresql:// if needed (common issue)
+        if database_url.startswith('postgres://'):
+            database_url = database_url.replace('postgres://', 'postgresql://', 1)
+            logger.info("Fixed postgres:// URL to postgresql://")
+        
+        app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+        logger.info("✅ Postgres database configured successfully")
+    else:
+        # Fallback to SQLite with persistent volume
+        logger.info("🔧 No DATABASE_URL found, using SQLite with persistent storage")
+        app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///warmup.db'
+    
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
     
+    # Log database info (without sensitive data)
+    db_type = "Postgres" if "postgresql://" in app.config['SQLALCHEMY_DATABASE_URI'] else "SQLite"
+    logger.info(f"Database type: {db_type}")
     return True
 
 # Setup database
@@ -422,63 +438,65 @@ def process_spintax(text):
     return text
 
 def send_warmup_email(campaign_id, recipient_email, recipient_name, content_type):
-    """Send actual warmup email"""
+    """Send actual warmup email - FIXED WITH APP CONTEXT"""
     try:
-        campaign = Campaign.query.get(campaign_id)
-        if not campaign or campaign.status != 'active':
-            logger.error(f"Campaign {campaign_id} not active or not found")
-            return False
-        
-        logger.info(f"Generating email content for {recipient_email}")
-        
-        # Generate AI content
-        ai_content = generate_ai_email_content(
-            content_type, 
-            campaign.industry, 
-            recipient_name, 
-            "Team"
-        )
-        
-        # Get email template
-        template = EMAIL_CONTENT_TYPES[content_type]
-        subject_template = random.choice(template['subject_templates'])
-        
-        # Generate subject with spintax
-        subject = process_spintax(subject_template.format(
-            topic=campaign.industry,
-            industry=campaign.industry.replace('_', ' ').title(),
-            date=datetime.now().strftime('%B %d')
-        ))
-        
-        # Generate email body
-        email_body = template['body_template'].format(
-            recipient_name=recipient_name,
-            topic=campaign.industry.replace('_', ' '),
-            industry=campaign.industry.replace('_', ' ').title(),
-            main_content=ai_content,
-            sender_name=campaign.email.split('@')[0].title()
-        )
-        
-        logger.info(f"Attempting to send email to {recipient_email} with subject: {subject}")
-        
-        # Send email using campaign SMTP settings
-        success = send_smtp_email(campaign, recipient_email, subject, email_body)
-        
-        # Log the email
-        log_email(campaign_id, recipient_email, subject, 'sent' if success else 'failed')
-        
-        if success:
-            # Update campaign stats
-            campaign.emails_sent += 1
-            campaign.progress = calculate_campaign_progress(campaign)
-            db.session.commit()
-            logger.info(f"Email sent successfully and stats updated")
+        with app.app_context():  # 🔧 FIX: Ensure app context for database operations
+            campaign = Campaign.query.get(campaign_id)
+            if not campaign or campaign.status != 'active':
+                logger.error(f"Campaign {campaign_id} not active or not found")
+                return False
             
-        return success
+            logger.info(f"Generating email content for {recipient_email}")
+            
+            # Generate AI content
+            ai_content = generate_ai_email_content(
+                content_type, 
+                campaign.industry, 
+                recipient_name, 
+                "Team"
+            )
+            
+            # Get email template
+            template = EMAIL_CONTENT_TYPES[content_type]
+            subject_template = random.choice(template['subject_templates'])
+            
+            # Generate subject with spintax
+            subject = process_spintax(subject_template.format(
+                topic=campaign.industry,
+                industry=campaign.industry.replace('_', ' ').title(),
+                date=datetime.now().strftime('%B %d')
+            ))
+            
+            # Generate email body
+            email_body = template['body_template'].format(
+                recipient_name=recipient_name,
+                topic=campaign.industry.replace('_', ' '),
+                industry=campaign.industry.replace('_', ' ').title(),
+                main_content=ai_content,
+                sender_name=campaign.email.split('@')[0].title()
+            )
+            
+            logger.info(f"Attempting to send email to {recipient_email} with subject: {subject}")
+            
+            # Send email using campaign SMTP settings
+            success = send_smtp_email(campaign, recipient_email, subject, email_body)
+            
+            # Log the email
+            log_email(campaign_id, recipient_email, subject, 'sent' if success else 'failed')
+            
+            if success:
+                # Update campaign stats
+                campaign.emails_sent += 1
+                campaign.progress = calculate_campaign_progress(campaign)
+                db.session.commit()
+                logger.info(f"Email sent successfully and stats updated")
+                
+            return success
         
     except Exception as e:
         logger.error(f"Error sending warmup email: {str(e)}")
-        log_email(campaign_id, recipient_email, "Error", 'failed', str(e))
+        with app.app_context():
+            log_email(campaign_id, recipient_email, "Error", 'failed', str(e))
         return False
 
 def send_smtp_email(campaign, recipient_email, subject, body):
@@ -518,19 +536,20 @@ def send_smtp_email(campaign, recipient_email, subject, body):
         return False
 
 def log_email(campaign_id, recipient, subject, status, error_message=None):
-    """Log email sending attempt"""
+    """Log email sending attempt - FIXED WITH APP CONTEXT"""
     try:
-        email_log = EmailLog(
-            campaign_id=campaign_id,
-            recipient=recipient,
-            subject=subject,
-            status=status,
-            error_message=error_message,
-            sent_at=datetime.utcnow()
-        )
-        db.session.add(email_log)
-        db.session.commit()
-        logger.info(f"Email log created: {status} to {recipient}")
+        with app.app_context():
+            email_log = EmailLog(
+                campaign_id=campaign_id,
+                recipient=recipient,
+                subject=subject,
+                status=status,
+                error_message=error_message,
+                sent_at=datetime.utcnow()
+            )
+            db.session.add(email_log)
+            db.session.commit()
+            logger.info(f"Email log created: {status} to {recipient}")
     except Exception as e:
         logger.error(f"Error logging email: {str(e)}")
 
@@ -544,60 +563,62 @@ def get_daily_volume_for_campaign(campaign):
     """Calculate daily email volume"""
     return campaign.daily_volume
 
+# 🔧 MAIN FIX: APPLICATION CONTEXT WRAPPER FOR SCHEDULER
 def process_warmup_campaigns():
-    """Process all active campaigns for email sending - 24/7 OPERATION (BUSINESS HOURS RESTRICTION REMOVED)"""
+    """Process all active campaigns for email sending - FIXED WITH APP CONTEXT"""
     try:
-        active_campaigns = Campaign.query.filter_by(status='active').all()
-        logger.info(f"🔄 [24/7 MODE] Processing {len(active_campaigns)} active campaigns")
-        
-        for campaign in active_campaigns:
-            daily_volume = get_daily_volume_for_campaign(campaign)
+        with app.app_context():  # 🔧 CRITICAL FIX: Wrap all database operations
+            active_campaigns = Campaign.query.filter_by(status='active').all()
+            logger.info(f"🔄 [24/7 MODE] Processing {len(active_campaigns)} active campaigns")
             
-            # Check if we've already sent emails today
-            today = datetime.utcnow().date()
-            today_emails = EmailLog.query.filter(
-                EmailLog.campaign_id == campaign.id,
-                EmailLog.sent_at >= today,
-                EmailLog.status == 'sent'
-            ).count()
-            
-            emails_to_send = max(0, daily_volume - today_emails)
-            logger.info(f"📧 Campaign '{campaign.name}': {emails_to_send} emails to send today (sent: {today_emails}/{daily_volume})")
-            
-            if emails_to_send > 0:
-                # Select random recipients
-                recipients = random.sample(WARMUP_RECIPIENTS, min(emails_to_send, len(WARMUP_RECIPIENTS)))
+            for campaign in active_campaigns:
+                daily_volume = get_daily_volume_for_campaign(campaign)
                 
-                for recipient in recipients:
-                    # Select random content type
-                    content_type = random.choice(list(EMAIL_CONTENT_TYPES.keys()))
-                    
-                    # Send email
-                    success = send_warmup_email(
-                        campaign.id,
-                        recipient['email'],
-                        recipient['name'],
-                        content_type
-                    )
-                    logger.info(f"📨 Email to {recipient['email']}: {'✅ SUCCESS' if success else '❌ FAILED'}")
-                    
-                    # Delay between emails (KEPT ORIGINAL 5-10 seconds for safety)
-                    time.sleep(random.uniform(5, 10))
+                # Check if we've already sent emails today
+                today = datetime.utcnow().date()
+                today_emails = EmailLog.query.filter(
+                    EmailLog.campaign_id == campaign.id,
+                    EmailLog.sent_at >= today,
+                    EmailLog.status == 'sent'
+                ).count()
                 
-                logger.info(f"✅ Sent {len(recipients)} warmup emails for campaign '{campaign.name}'")
-            else:
-                logger.info(f"⏭️ Campaign '{campaign.name}': Daily quota already reached")
+                emails_to_send = max(0, daily_volume - today_emails)
+                logger.info(f"📧 Campaign '{campaign.name}': {emails_to_send} emails to send today (sent: {today_emails}/{daily_volume})")
+                
+                if emails_to_send > 0:
+                    # Select random recipients
+                    recipients = random.sample(WARMUP_RECIPIENTS, min(emails_to_send, len(WARMUP_RECIPIENTS)))
+                    
+                    for recipient in recipients:
+                        # Select random content type
+                        content_type = random.choice(list(EMAIL_CONTENT_TYPES.keys()))
+                        
+                        # Send email
+                        success = send_warmup_email(
+                            campaign.id,
+                            recipient['email'],
+                            recipient['name'],
+                            content_type
+                        )
+                        logger.info(f"📨 Email to {recipient['email']}: {'✅ SUCCESS' if success else '❌ FAILED'}")
+                        
+                        # Delay between emails (KEPT ORIGINAL 5-10 seconds for safety)
+                        time.sleep(random.uniform(5, 10))
+                    
+                    logger.info(f"✅ Sent {len(recipients)} warmup emails for campaign '{campaign.name}'")
+                else:
+                    logger.info(f"⏭️ Campaign '{campaign.name}': Daily quota already reached")
     
     except Exception as e:
         logger.error(f"❌ Error processing warmup campaigns: {str(e)}")
         logger.error(f"Full traceback: {traceback.format_exc()}")
 
 def start_warmup_scheduler():
-    """Start the background email scheduler - 24/7 OPERATION WITH FASTER FREQUENCY"""
+    """Start the background email scheduler - 24/7 OPERATION WITH APP CONTEXT FIX"""
     def run_scheduler():
-        logger.info("🚀 Warmup scheduler thread started - 24/7 MODE")
+        logger.info("🚀 Warmup scheduler thread started - 24/7 MODE with APP CONTEXT FIX")
         
-        # Schedule email sending every 2 minutes for faster testing (CHANGED FROM 5 MINUTES)
+        # Schedule email sending every 2 minutes for faster testing
         schedule.every(2).minutes.do(process_warmup_campaigns)
         
         # Daily summary at 6 PM
@@ -625,30 +646,31 @@ def start_warmup_scheduler():
     # Start scheduler in background thread
     scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
     scheduler_thread.start()
-    logger.info("⏰ Warmup scheduler started - 24/7 MODE, checking every 2 minutes")
+    logger.info("⏰ Warmup scheduler started - 24/7 MODE with POSTGRES PERSISTENCE")
 
 def log_daily_summary():
-    """Log a daily summary of campaign activity"""
+    """Log a daily summary of campaign activity - FIXED WITH APP CONTEXT"""
     try:
-        active_campaigns = Campaign.query.filter_by(status='active').all()
-        today = datetime.utcnow().date()
-        
-        logger.info("📊 === DAILY SUMMARY ===")
-        for campaign in active_campaigns:
-            today_emails = EmailLog.query.filter(
-                EmailLog.campaign_id == campaign.id,
-                EmailLog.sent_at >= today,
-                EmailLog.status == 'sent'
-            ).count()
+        with app.app_context():
+            active_campaigns = Campaign.query.filter_by(status='active').all()
+            today = datetime.utcnow().date()
             
-            failed_emails = EmailLog.query.filter(
-                EmailLog.campaign_id == campaign.id,
-                EmailLog.sent_at >= today,
-                EmailLog.status == 'failed'
-            ).count()
-            
-            logger.info(f"📈 Campaign '{campaign.name}': {today_emails} sent, {failed_emails} failed")
-            
+            logger.info("📊 === DAILY SUMMARY ===")
+            for campaign in active_campaigns:
+                today_emails = EmailLog.query.filter(
+                    EmailLog.campaign_id == campaign.id,
+                    EmailLog.sent_at >= today,
+                    EmailLog.status == 'sent'
+                ).count()
+                
+                failed_emails = EmailLog.query.filter(
+                    EmailLog.campaign_id == campaign.id,
+                    EmailLog.sent_at >= today,
+                    EmailLog.status == 'failed'
+                ).count()
+                
+                logger.info(f"📈 Campaign '{campaign.name}': {today_emails} sent, {failed_emails} failed")
+                
     except Exception as e:
         logger.error(f"Error generating daily summary: {str(e)}")
 
@@ -707,7 +729,7 @@ def validate_smtp_connection(provider, email, username, password, smtp_host=None
         return False, f"Unexpected error: {str(e)}"
 
 def create_default_user():
-    """Create default admin user if no users exist"""
+    """Create default admin user if no users exist - FIXED WITH APP CONTEXT"""
     try:
         with app.app_context():
             if User.query.count() == 0:
@@ -737,7 +759,7 @@ def index():
         logger.error(f"Error in index route: {str(e)}")
         return """
         <html><body>
-        <h1>🚀 KEXY Email Warmup System - 24/7 MODE</h1>
+        <h1>🚀 KEXY Email Warmup System - 24/7 MODE with POSTGRES</h1>
         <p>System is starting up...</p>
         <p><a href="/dashboard">Go to Dashboard</a></p>
         <script>setTimeout(() => window.location.reload(), 3000);</script>
@@ -1053,38 +1075,41 @@ def get_warmup_strategies():
     """Get available warmup strategies"""
     return jsonify({'strategies': WARMUP_STRATEGIES})
 
-# 🚨 CRITICAL DEBUG ROUTES - NOW INCLUDED! 🚨
+# 🚨 CRITICAL DEBUG ROUTES - WITH APP CONTEXT FIXES! 🚨
 @app.route('/api/debug/campaign/<int:campaign_id>')
 def debug_campaign(campaign_id):
-    """Debug why campaign isn't working"""
+    """Debug why campaign isn't working - FIXED WITH APP CONTEXT"""
     try:
-        campaign = Campaign.query.get(campaign_id)
-        if not campaign:
-            return jsonify({'error': 'Campaign not found'}), 404
-        
-        today = datetime.utcnow().date()
-        today_emails = EmailLog.query.filter(
-            EmailLog.campaign_id == campaign_id,
-            EmailLog.sent_at >= today
-        ).count()
-        
-        total_emails = EmailLog.query.filter_by(campaign_id=campaign_id).count()
-        
-        return jsonify({
-            'campaign_status': campaign.status,
-            'campaign_name': campaign.name,
-            'daily_volume': campaign.daily_volume,
-            'emails_sent_today': today_emails,
-            'total_emails_ever': total_emails,
-            'business_hours_restriction': 'REMOVED - 24/7 MODE',
-            'current_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-            'smtp_host': campaign.smtp_host,
-            'smtp_username': campaign.smtp_username,
-            'provider': campaign.provider,
-            'created_by_user_id': campaign.user_id,
-            'last_updated': campaign.updated_at.isoformat() if campaign.updated_at else None,
-            'scheduler_frequency': 'Every 2 minutes'
-        })
+        with app.app_context():
+            campaign = Campaign.query.get(campaign_id)
+            if not campaign:
+                return jsonify({'error': 'Campaign not found'}), 404
+            
+            today = datetime.utcnow().date()
+            today_emails = EmailLog.query.filter(
+                EmailLog.campaign_id == campaign_id,
+                EmailLog.sent_at >= today
+            ).count()
+            
+            total_emails = EmailLog.query.filter_by(campaign_id=campaign_id).count()
+            
+            return jsonify({
+                'campaign_status': campaign.status,
+                'campaign_name': campaign.name,
+                'daily_volume': campaign.daily_volume,
+                'emails_sent_today': today_emails,
+                'total_emails_ever': total_emails,
+                'business_hours_restriction': 'REMOVED - 24/7 MODE',
+                'current_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                'smtp_host': campaign.smtp_host,
+                'smtp_username': campaign.smtp_username,
+                'provider': campaign.provider,
+                'created_by_user_id': campaign.user_id,
+                'last_updated': campaign.updated_at.isoformat() if campaign.updated_at else None,
+                'scheduler_frequency': 'Every 2 minutes',
+                'database_type': 'Postgres' if 'postgresql://' in app.config['SQLALCHEMY_DATABASE_URI'] else 'SQLite',
+                'app_context_fix': 'APPLIED'
+            })
         
     except Exception as e:
         logger.error(f"Debug campaign error: {str(e)}")
@@ -1092,23 +1117,26 @@ def debug_campaign(campaign_id):
 
 @app.route('/api/debug/process-campaigns', methods=['POST'])
 def debug_process_campaigns():
-    """Manually trigger campaign processing"""
+    """Manually trigger campaign processing - FIXED WITH APP CONTEXT"""
     try:
-        logger.info("🔧 === MANUAL CAMPAIGN PROCESSING TRIGGERED (24/7 MODE) ===")
+        logger.info("🔧 === MANUAL CAMPAIGN PROCESSING TRIGGERED (24/7 MODE + POSTGRES) ===")
         process_warmup_campaigns()
         
         # Get some stats to return
-        active_campaigns = Campaign.query.filter_by(status='active').count()
-        today = datetime.utcnow().date()
-        today_emails = EmailLog.query.filter(EmailLog.sent_at >= today).count()
+        with app.app_context():
+            active_campaigns = Campaign.query.filter_by(status='active').count()
+            today = datetime.utcnow().date()
+            today_emails = EmailLog.query.filter(EmailLog.sent_at >= today).count()
         
         return jsonify({
             'success': True, 
-            'message': 'Campaign processing completed - check logs (24/7 mode active)',
+            'message': 'Campaign processing completed - check logs (24/7 mode + Postgres)',
             'active_campaigns': active_campaigns,
             'emails_sent_today': today_emails,
             'timestamp': datetime.now().isoformat(),
-            'business_hours_restriction': 'REMOVED'
+            'business_hours_restriction': 'REMOVED',
+            'database_type': 'Postgres' if 'postgresql://' in app.config['SQLALCHEMY_DATABASE_URI'] else 'SQLite',
+            'app_context_fix': 'APPLIED'
         })
     except Exception as e:
         logger.error(f"Manual processing error: {str(e)}")
@@ -1116,43 +1144,45 @@ def debug_process_campaigns():
 
 @app.route('/api/debug/force-send/<int:campaign_id>', methods=['POST'])
 def force_send_now(campaign_id):
-    """Force send an email right now for testing"""
+    """Force send an email right now for testing - FIXED WITH APP CONTEXT"""
     try:
-        campaign = Campaign.query.get(campaign_id)
-        if not campaign:
-            return jsonify({'error': 'Campaign not found'}), 404
-        
-        if campaign.status != 'active':
-            campaign.status = 'active'
-            db.session.commit()
-            logger.info(f"🔧 Campaign {campaign_id} activated for testing")
-        
-        recipient = random.choice(WARMUP_RECIPIENTS)
-        content_type = random.choice(list(EMAIL_CONTENT_TYPES.keys()))
-        
-        logger.info(f"🚀 FORCE SENDING email to {recipient['email']} for campaign {campaign.name} (24/7 MODE)")
-        
-        success = send_warmup_email(
-            campaign_id,
-            recipient['email'],
-            recipient['name'],
-            content_type
-        )
-        
-        # Get latest log entry
-        latest_log = EmailLog.query.filter_by(campaign_id=campaign_id).order_by(EmailLog.sent_at.desc()).first()
-        
-        return jsonify({
-            'success': success,
-            'recipient': recipient['email'],
-            'campaign_status': campaign.status,
-            'content_type': content_type,
-            'latest_log_status': latest_log.status if latest_log else 'No logs found',
-            'latest_log_error': latest_log.error_message if latest_log else None,
-            'message': f"Email {'✅ sent successfully' if success else '❌ failed to send'} - check logs for details",
-            'timestamp': datetime.now().isoformat(),
-            'mode': '24/7 OPERATION'
-        })
+        with app.app_context():
+            campaign = Campaign.query.get(campaign_id)
+            if not campaign:
+                return jsonify({'error': 'Campaign not found'}), 404
+            
+            if campaign.status != 'active':
+                campaign.status = 'active'
+                db.session.commit()
+                logger.info(f"🔧 Campaign {campaign_id} activated for testing")
+            
+            recipient = random.choice(WARMUP_RECIPIENTS)
+            content_type = random.choice(list(EMAIL_CONTENT_TYPES.keys()))
+            
+            logger.info(f"🚀 FORCE SENDING email to {recipient['email']} for campaign {campaign.name} (24/7 MODE + POSTGRES)")
+            
+            success = send_warmup_email(
+                campaign_id,
+                recipient['email'],
+                recipient['name'],
+                content_type
+            )
+            
+            # Get latest log entry
+            latest_log = EmailLog.query.filter_by(campaign_id=campaign_id).order_by(EmailLog.sent_at.desc()).first()
+            
+            return jsonify({
+                'success': success,
+                'recipient': recipient['email'],
+                'campaign_status': campaign.status,
+                'content_type': content_type,
+                'latest_log_status': latest_log.status if latest_log else 'No logs found',
+                'latest_log_error': latest_log.error_message if latest_log else None,
+                'message': f"Email {'✅ sent successfully' if success else '❌ failed to send'} - check logs for details",
+                'timestamp': datetime.now().isoformat(),
+                'mode': '24/7 OPERATION + POSTGRES',
+                'app_context_fix': 'APPLIED'
+            })
         
     except Exception as e:
         logger.error(f"Force send error: {str(e)}")
@@ -1160,20 +1190,24 @@ def force_send_now(campaign_id):
 
 @app.route('/api/debug/system-status')
 def system_status():
-    """Get overall system status"""
+    """Get overall system status - FIXED WITH APP CONTEXT"""
     try:
-        return jsonify({
-            'database_connected': True,
-            'total_campaigns': Campaign.query.count(),
-            'active_campaigns': Campaign.query.filter_by(status='active').count(),
-            'total_users': User.query.count(),
-            'total_email_logs': EmailLog.query.count(),
-            'server_time': datetime.now().isoformat(),
-            'business_hours_restriction': 'REMOVED - 24/7 MODE',
-            'scheduler_frequency': 'Every 2 minutes',
-            'scheduler_running': True,
-            'mode': '24/7 OPERATION'
-        })
+        with app.app_context():
+            return jsonify({
+                'database_connected': True,
+                'total_campaigns': Campaign.query.count(),
+                'active_campaigns': Campaign.query.filter_by(status='active').count(),
+                'total_users': User.query.count(),
+                'total_email_logs': EmailLog.query.count(),
+                'server_time': datetime.now().isoformat(),
+                'business_hours_restriction': 'REMOVED - 24/7 MODE',
+                'scheduler_frequency': 'Every 2 minutes',
+                'scheduler_running': True,
+                'mode': '24/7 OPERATION',
+                'database_type': 'Postgres' if 'postgresql://' in app.config['SQLALCHEMY_DATABASE_URI'] else 'SQLite',
+                'app_context_fix': 'APPLIED',
+                'persistence': 'ENABLED'
+            })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -1191,13 +1225,13 @@ def internal_error(error):
 def forbidden(error):
     return jsonify({'error': 'Access forbidden'}), 403
 
-# Initialize database - BULLETPROOF VERSION WITH BACKGROUND INIT
+# Initialize database - BULLETPROOF VERSION WITH BACKGROUND INIT AND APP CONTEXT
 def background_init():
-    """Initialize database in background - INSTANT LAUNCH FIX"""
+    """Initialize database in background - POSTGRES + APP CONTEXT FIX"""
     time.sleep(2)  # Wait for server to start
     try:
         with app.app_context():
-            logger.info("🔧 Creating SQLite database tables...")
+            logger.info("🔧 Creating database tables...")
             db.create_all()
             logger.info("✅ Database tables created successfully")
             
@@ -1207,11 +1241,11 @@ def background_init():
             # Start warmup system
             try:
                 start_warmup_scheduler()
-                logger.info("✅ Warmup scheduler started successfully (24/7 MODE)")
+                logger.info("✅ Warmup scheduler started successfully (24/7 MODE + POSTGRES)")
             except Exception as scheduler_error:
                 logger.error(f"❌ Scheduler error: {scheduler_error}")
             
-            logger.info("🎉 System initialization complete - 24/7 OPERATION ACTIVE!")
+            logger.info("🎉 System initialization complete - 24/7 OPERATION + POSTGRES PERSISTENCE!")
             
     except Exception as e:
         logger.error(f"❌ Database initialization error: {str(e)}")
@@ -1225,13 +1259,15 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     debug = os.environ.get('FLASK_ENV') == 'development'
     
-    logger.info("🚀 Starting KEXY Email Warmup System - 24/7 MODE!")
+    logger.info("🚀 Starting KEXY Email Warmup System - 24/7 MODE + POSTGRES!")
     logger.info(f"🌐 Server will run on port {port}")
     logger.info("⚡ Database will initialize in background")
     logger.info("🔧 All debug routes included and working!")
     logger.info("⏰ Business hours restriction REMOVED - emails send 24/7!")
     logger.info("🚀 Scheduler frequency: Every 2 minutes!")
+    logger.info("🗃️ Postgres database for persistent data!")
+    logger.info("🔧 Application context fix APPLIED!")
     
     app.run(host='0.0.0.0', port=port, debug=debug)
 
-logger.info("✅ KEXY Email Warmup System loaded successfully - 24/7 OPERATION READY!")
+logger.info("✅ KEXY Email Warmup System loaded - 24/7 + POSTGRES + APP CONTEXT FIXED!")
