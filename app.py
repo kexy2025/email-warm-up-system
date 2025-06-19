@@ -768,9 +768,6 @@ def test_route():
 
 @app.route('/')
 def index():
-    # ... rest of your code
-@app.route('/')
-def index():
     try:
         with app.app_context():
             admin_user = User.query.first()
@@ -1027,7 +1024,7 @@ def get_campaign_stats(campaign_id):
         if not campaign:
             return jsonify({'error': 'Campaign not found'}), 404
         
-        # 🔧 FIXED: Calculate stats from EmailLog table instead of campaign fields
+        # Calculate stats from EmailLog table
         total_emails = EmailLog.query.filter_by(campaign_id=campaign_id).count()
         sent_emails = EmailLog.query.filter_by(campaign_id=campaign_id, status='sent').count()
         failed_emails = EmailLog.query.filter_by(campaign_id=campaign_id, status='failed').count()
@@ -1057,16 +1054,14 @@ def get_campaign_stats(campaign_id):
         logger.error(f"Error fetching campaign stats: {str(e)}")
         return jsonify({'error': 'Failed to fetch stats'}), 500
 
-# 🔧 MAIN FIX: Dashboard stats endpoint - corrected calculation
 @app.route('/api/dashboard-stats')
 def dashboard_stats():
     try:
-        all_campaigns = Campaign.query.all()
+        # Get campaign counts
+        total_campaigns = Campaign.query.count()
+        active_campaigns = Campaign.query.filter_by(status='active').count()
         
-        total_campaigns = len(all_campaigns)
-        active_campaigns = len([c for c in all_campaigns if c.status == 'active'])
-        
-        # 🔧 FIXED: Calculate REAL success rate from EmailLog table
+        # Get REAL email stats from EmailLog table
         total_email_attempts = EmailLog.query.count()
         successful_emails = EmailLog.query.filter_by(status='sent').count()
         
@@ -1076,7 +1071,7 @@ def dashboard_stats():
         else:
             success_rate = 0.0
         
-        # Get total emails sent from EmailLog (not campaign.emails_sent)
+        # Get total emails sent from EmailLog
         total_emails_sent = successful_emails
 
         return jsonify({
@@ -1088,7 +1083,12 @@ def dashboard_stats():
 
     except Exception as e:
         logger.error(f"Dashboard stats error: {str(e)}")
-        return jsonify({'error': 'Failed to load stats'}), 500
+        return jsonify({
+            'total_campaigns': 0,
+            'active_campaigns': 0,
+            'emails_sent': 0,
+            'success_rate': 0.0
+        })
 
 @app.route('/api/providers')
 def get_providers():
@@ -1109,10 +1109,10 @@ def get_warmup_strategies():
     """Get available warmup strategies"""
     return jsonify({'strategies': WARMUP_STRATEGIES})
 
-# 🚨 CRITICAL DEBUG ROUTES - WITH APP CONTEXT FIXES! 🚨
+# Debug Routes
 @app.route('/api/debug/campaign/<int:campaign_id>')
 def debug_campaign(campaign_id):
-    """Debug why campaign isn't working - FIXED WITH APP CONTEXT"""
+    """Debug campaign"""
     try:
         with app.app_context():
             campaign = Campaign.query.get(campaign_id)
@@ -1133,15 +1133,11 @@ def debug_campaign(campaign_id):
                 'daily_volume': campaign.daily_volume,
                 'emails_sent_today': today_emails,
                 'total_emails_ever': total_emails,
-                'business_hours_restriction': 'REMOVED - 24/7 MODE',
                 'current_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                 'smtp_host': campaign.smtp_host,
                 'smtp_username': campaign.smtp_username,
                 'provider': campaign.provider,
-                'created_by_user_id': campaign.user_id,
                 'last_updated': campaign.updated_at.isoformat() if campaign.updated_at else None,
-                'scheduler_frequency': 'Every 2 minutes',
-                'database_type': 'Postgres' if 'postgresql://' in app.config['SQLALCHEMY_DATABASE_URI'] else 'SQLite',
                 'app_context_fix': 'APPLIED'
             })
         
@@ -1151,12 +1147,11 @@ def debug_campaign(campaign_id):
 
 @app.route('/api/debug/process-campaigns', methods=['POST'])
 def debug_process_campaigns():
-    """Manually trigger campaign processing - FIXED WITH APP CONTEXT"""
+    """Manually trigger campaign processing"""
     try:
-        logger.info("🔧 === MANUAL CAMPAIGN PROCESSING TRIGGERED (24/7 MODE + POSTGRES) ===")
+        logger.info("🔧 === MANUAL CAMPAIGN PROCESSING TRIGGERED ===")
         process_warmup_campaigns()
         
-        # Get some stats to return
         with app.app_context():
             active_campaigns = Campaign.query.filter_by(status='active').count()
             today = datetime.utcnow().date()
@@ -1164,13 +1159,10 @@ def debug_process_campaigns():
         
         return jsonify({
             'success': True, 
-            'message': 'Campaign processing completed - check logs (24/7 mode + Postgres)',
+            'message': 'Campaign processing completed',
             'active_campaigns': active_campaigns,
             'emails_sent_today': today_emails,
-            'timestamp': datetime.now().isoformat(),
-            'business_hours_restriction': 'REMOVED',
-            'database_type': 'Postgres' if 'postgresql://' in app.config['SQLALCHEMY_DATABASE_URI'] else 'SQLite',
-            'app_context_fix': 'APPLIED'
+            'timestamp': datetime.now().isoformat()
         })
     except Exception as e:
         logger.error(f"Manual processing error: {str(e)}")
@@ -1178,7 +1170,7 @@ def debug_process_campaigns():
 
 @app.route('/api/debug/force-send/<int:campaign_id>', methods=['POST'])
 def force_send_now(campaign_id):
-    """Force send an email right now for testing - FIXED WITH APP CONTEXT"""
+    """Force send an email right now for testing"""
     try:
         with app.app_context():
             campaign = Campaign.query.get(campaign_id)
@@ -1193,7 +1185,7 @@ def force_send_now(campaign_id):
             recipient = random.choice(WARMUP_RECIPIENTS)
             content_type = random.choice(list(EMAIL_CONTENT_TYPES.keys()))
             
-            logger.info(f"🚀 FORCE SENDING email to {recipient['email']} for campaign {campaign.name} (24/7 MODE + POSTGRES)")
+            logger.info(f"🚀 FORCE SENDING email to {recipient['email']} for campaign {campaign.name}")
             
             success = send_warmup_email(
                 campaign_id,
@@ -1202,7 +1194,6 @@ def force_send_now(campaign_id):
                 content_type
             )
             
-            # Get latest log entry
             latest_log = EmailLog.query.filter_by(campaign_id=campaign_id).order_by(EmailLog.sent_at.desc()).first()
             
             return jsonify({
@@ -1212,10 +1203,8 @@ def force_send_now(campaign_id):
                 'content_type': content_type,
                 'latest_log_status': latest_log.status if latest_log else 'No logs found',
                 'latest_log_error': latest_log.error_message if latest_log else None,
-                'message': f"Email {'✅ sent successfully' if success else '❌ failed to send'} - check logs for details",
-                'timestamp': datetime.now().isoformat(),
-                'mode': '24/7 OPERATION + POSTGRES',
-                'app_context_fix': 'APPLIED'
+                'message': f"Email {'✅ sent successfully' if success else '❌ failed to send'}",
+                'timestamp': datetime.now().isoformat()
             })
         
     except Exception as e:
@@ -1224,7 +1213,7 @@ def force_send_now(campaign_id):
 
 @app.route('/api/debug/system-status')
 def system_status():
-    """Get overall system status - FIXED WITH APP CONTEXT"""
+    """Get overall system status"""
     try:
         with app.app_context():
             return jsonify({
@@ -1234,13 +1223,8 @@ def system_status():
                 'total_users': User.query.count(),
                 'total_email_logs': EmailLog.query.count(),
                 'server_time': datetime.now().isoformat(),
-                'business_hours_restriction': 'REMOVED - 24/7 MODE',
-                'scheduler_frequency': 'Every 2 minutes',
                 'scheduler_running': True,
-                'mode': '24/7 OPERATION',
-                'database_type': 'Postgres' if 'postgresql://' in app.config['SQLALCHEMY_DATABASE_URI'] else 'SQLite',
-                'app_context_fix': 'APPLIED',
-                'persistence': 'ENABLED'
+                'database_type': 'Postgres' if 'postgresql://' in app.config['SQLALCHEMY_DATABASE_URI'] else 'SQLite'
             })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -1259,9 +1243,9 @@ def internal_error(error):
 def forbidden(error):
     return jsonify({'error': 'Access forbidden'}), 403
 
-# Initialize database - BULLETPROOF VERSION WITH BACKGROUND INIT AND APP CONTEXT
+# Initialize database
 def background_init():
-    """Initialize database in background - POSTGRES + APP CONTEXT FIX"""
+    """Initialize database in background"""
     time.sleep(2)  # Wait for server to start
     try:
         with app.app_context():
@@ -1275,33 +1259,27 @@ def background_init():
             # Start warmup system
             try:
                 start_warmup_scheduler()
-                logger.info("✅ Warmup scheduler started successfully (24/7 MODE + POSTGRES)")
+                logger.info("✅ Warmup scheduler started successfully")
             except Exception as scheduler_error:
                 logger.error(f"❌ Scheduler error: {scheduler_error}")
             
-            logger.info("🎉 System initialization complete - 24/7 OPERATION + POSTGRES PERSISTENCE!")
+            logger.info("🎉 System initialization complete!")
             
     except Exception as e:
         logger.error(f"❌ Database initialization error: {str(e)}")
         logger.error(f"Full traceback: {traceback.format_exc()}")
 
-# START BACKGROUND THREAD FOR INSTANT LAUNCH
+# Start background thread
 threading.Thread(target=background_init, daemon=True).start()
 
-# Application startup - INSTANT LAUNCH
+# Application startup
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     debug = os.environ.get('FLASK_ENV') == 'development'
     
-    logger.info("🚀 Starting KEXY Email Warmup System - 24/7 MODE + POSTGRES!")
+    logger.info("🚀 Starting KEXY Email Warmup System!")
     logger.info(f"🌐 Server will run on port {port}")
-    logger.info("⚡ Database will initialize in background")
-    logger.info("🔧 All debug routes included and working!")
-    logger.info("⏰ Business hours restriction REMOVED - emails send 24/7!")
-    logger.info("🚀 Scheduler frequency: Every 2 minutes!")
-    logger.info("🗃️ Postgres database for persistent data!")
-    logger.info("🔧 Application context fix APPLIED!")
     
     app.run(host='0.0.0.0', port=port, debug=debug)
 
-logger.info("✅ KEXY Email Warmup System loaded - 24/7 + POSTGRES + APP CONTEXT FIXED!")
+logger.info("✅ KEXY Email Warmup System loaded!")
