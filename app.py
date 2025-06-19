@@ -37,6 +37,17 @@ import random
 # Initialize Flask app
 app = Flask(__name__)
 
+# Static file serving route
+@app.route('/static/<path:filename>')
+def static_files(filename):
+    """Serve static files"""
+    return send_from_directory('static', filename)
+
+# Logging setup - FIRST
+logging.basicConfig(level=logging.INFO)
+
+
+
 # Logging setup - FIRST
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
