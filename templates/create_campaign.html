@@ -11,45 +11,77 @@
         </div>
 
         <div class="bg-white shadow-lg rounded-lg card-shadow">
-            <form method="POST" id="campaign-form">
-                {{ form.hidden_tag() }}
-                
-                <!-- Step 1: Email Configuration -->
+            <form id="campaign-form">
+                <!-- Step 1: Basic Information -->
                 <div class="px-6 py-8 border-b border-gray-200">
                     <h3 class="text-lg font-medium text-gray-900 mb-6">
                         <span class="inline-flex items-center justify-center w-8 h-8 bg-blue-100 text-blue-600 rounded-full text-sm font-medium mr-3">1</span>
+                        Campaign Details
+                    </h3>
+                    
+                    <div class="grid grid-cols-1 gap-6">
+                        <div>
+                            <label for="name" class="block text-sm font-medium text-gray-700 mb-2">Campaign Name</label>
+                            <input type="text" id="name" name="name" required
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                   placeholder="My Email Warmup Campaign">
+                        </div>
+                        
+                        <div>
+                            <label for="email" class="block text-sm font-medium text-gray-700 mb-2">Email Address</label>
+                            <input type="email" id="email" name="email" required
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                   placeholder="your-email@domain.com">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 2: Email Configuration -->
+                <div class="px-6 py-8 border-b border-gray-200">
+                    <h3 class="text-lg font-medium text-gray-900 mb-6">
+                        <span class="inline-flex items-center justify-center w-8 h-8 bg-blue-100 text-blue-600 rounded-full text-sm font-medium mr-3">2</span>
                         Email Configuration
                     </h3>
                     
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
-                            <label for="email" class="block text-sm font-medium text-gray-700 mb-2">Email Address</label>
-                            {{ form.email(class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500", placeholder="your-email@domain.com") }}
-                            {% if form.email.errors %}
-                                <div class="text-red-500 text-sm mt-1">
-                                    {% for error in form.email.errors %}
-                                        <p>{{ error }}</p>
-                                    {% endfor %}
-                                </div>
-                            {% endif %}
+                            <label for="provider" class="block text-sm font-medium text-gray-700 mb-2">Email Provider</label>
+                            <select id="provider" name="provider" required
+                                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                <option value="">Select your email provider</option>
+                                {% for key, config in providers.items() %}
+                                <option value="{{ key }}">{{ config.name }}</option>
+                                {% endfor %}
+                            </select>
                         </div>
                         
                         <div>
-                            <label for="smtp_provider" class="block text-sm font-medium text-gray-700 mb-2">Email Provider</label>
-                            {{ form.smtp_provider(class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500") }}
+                            <label for="username" class="block text-sm font-medium text-gray-700 mb-2">Username/Email</label>
+                            <input type="text" id="username" name="username" required
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                   placeholder="Usually your email address">
                         </div>
                         
                         <div class="md:col-span-2">
                             <label for="password" class="block text-sm font-medium text-gray-700 mb-2">App Password</label>
-                            {{ form.password(class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500", placeholder="App password (not your regular password)") }}
-                            {% if form.password.errors %}
-                                <div class="text-red-500 text-sm mt-1">
-                                    {% for error in form.password.errors %}
-                                        <p>{{ error }}</p>
-                                    {% endfor %}
+                            <input type="password" id="password" name="password" required
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                   placeholder="App password (not your regular password)">
+                            <p class="text-sm text-gray-500 mt-1">Use an app-specific password, not your regular email password.</p>
+                        </div>
+                        
+                        <!-- Provider Help Text -->
+                        <div class="md:col-span-2" id="provider-help" style="display: none;">
+                            <div class="bg-blue-50 border border-blue-200 rounded-md p-4">
+                                <div class="flex">
+                                    <div class="flex-shrink-0">
+                                        <i class="fas fa-info-circle text-blue-400"></i>
+                                    </div>
+                                    <div class="ml-3">
+                                        <p class="text-sm text-blue-700" id="provider-help-text"></p>
+                                    </div>
                                 </div>
-                            {% endif %}
-                            <p class="text-sm text-gray-500 mt-1">Use an app-specific password, not your regular email password. <a href="#" class="text-blue-600 hover:text-blue-500">Learn how to create one</a>.</p>
+                            </div>
                         </div>
                         
                         <!-- SMTP Validation Status -->
@@ -64,7 +96,8 @@
                                     </div>
                                 </div>
                             </div>
-                            <button type="button" id="validate-smtp" class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                            <button type="button" id="validate-smtp" 
+                                    class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
                                 <i class="fas fa-check-circle mr-2"></i>
                                 Validate SMTP Settings
                             </button>
@@ -72,44 +105,51 @@
                     </div>
                 </div>
 
-                <!-- Step 2: Campaign Settings -->
+                <!-- Step 3: Campaign Settings -->
                 <div class="px-6 py-8 border-b border-gray-200">
                     <h3 class="text-lg font-medium text-gray-900 mb-6">
-                        <span class="inline-flex items-center justify-center w-8 h-8 bg-blue-100 text-blue-600 rounded-full text-sm font-medium mr-3">2</span>
+                        <span class="inline-flex items-center justify-center w-8 h-8 bg-blue-100 text-blue-600 rounded-full text-sm font-medium mr-3">3</span>
                         Campaign Settings
                     </h3>
                     
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
                             <label for="industry" class="block text-sm font-medium text-gray-700 mb-2">Industry</label>
-                            {{ form.industry(class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500") }}
+                            <select id="industry" name="industry"
+                                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                <option value="business">Business</option>
+                                <option value="technology">Technology</option>
+                                <option value="marketing">Marketing</option>
+                                <option value="finance">Finance</option>
+                                <option value="healthcare">Healthcare</option>
+                                <option value="education">Education</option>
+                                <option value="retail">Retail</option>
+                                <option value="real_estate">Real Estate</option>
+                                <option value="consulting">Consulting</option>
+                            </select>
                             <p class="text-sm text-gray-500 mt-1">This helps us generate relevant email content for your warmup.</p>
                         </div>
                         
                         <div>
-                            <label for="duration" class="block text-sm font-medium text-gray-700 mb-2">Duration (days)</label>
-                            {{ form.duration(class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500", value="30") }}
+                            <label for="warmup_days" class="block text-sm font-medium text-gray-700 mb-2">Duration (days)</label>
+                            <input type="number" id="warmup_days" name="warmup_days" value="30" min="7" max="90"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
                             <p class="text-sm text-gray-500 mt-1">Recommended: 30 days for optimal results.</p>
                         </div>
                         
-                        <div>
-                            <label for="min_daily_emails" class="block text-sm font-medium text-gray-700 mb-2">Starting Volume (emails/day)</label>
-                            {{ form.min_daily_emails(class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500", value="5") }}
-                            <p class="text-sm text-gray-500 mt-1">We'll start with this volume and gradually increase.</p>
-                        </div>
-                        
-                        <div>
-                            <label for="max_daily_emails" class="block text-sm font-medium text-gray-700 mb-2">Target Volume (emails/day)</label>
-                            {{ form.max_daily_emails(class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500", value="100") }}
-                            <p class="text-sm text-gray-500 mt-1">Maximum daily volume at the end of the warmup period.</p>
+                        <div class="md:col-span-2">
+                            <label for="daily_volume" class="block text-sm font-medium text-gray-700 mb-2">Daily Email Volume</label>
+                            <input type="number" id="daily_volume" name="daily_volume" value="10" min="5" max="100"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                            <p class="text-sm text-gray-500 mt-1">Number of emails to send per day. We'll gradually increase volume over time.</p>
                         </div>
                     </div>
                 </div>
 
-                <!-- Step 3: Review and Submit -->
+                <!-- Step 4: Review and Submit -->
                 <div class="px-6 py-8">
                     <h3 class="text-lg font-medium text-gray-900 mb-6">
-                        <span class="inline-flex items-center justify-center w-8 h-8 bg-blue-100 text-blue-600 rounded-full text-sm font-medium mr-3">3</span>
+                        <span class="inline-flex items-center justify-center w-8 h-8 bg-blue-100 text-blue-600 rounded-full text-sm font-medium mr-3">4</span>
                         Review and Create
                     </h3>
                     
@@ -121,26 +161,31 @@
                                 <dd class="text-sm text-gray-900" id="summary-duration">30 days</dd>
                             </div>
                             <div>
-                                <dt class="text-sm font-medium text-gray-500">Volume Range</dt>
-                                <dd class="text-sm text-gray-900" id="summary-volume">5 - 100 emails/day</dd>
+                                <dt class="text-sm font-medium text-gray-500">Daily Volume</dt>
+                                <dd class="text-sm text-gray-900" id="summary-volume">10 emails/day</dd>
                             </div>
                             <div>
                                 <dt class="text-sm font-medium text-gray-500">Total Estimated Emails</dt>
-                                <dd class="text-sm text-gray-900" id="summary-total">~1,575 emails</dd>
+                                <dd class="text-sm text-gray-900" id="summary-total">~300 emails</dd>
                             </div>
                             <div>
                                 <dt class="text-sm font-medium text-gray-500">Industry</dt>
-                                <dd class="text-sm text-gray-900" id="summary-industry">Technology</dd>
+                                <dd class="text-sm text-gray-900" id="summary-industry">Business</dd>
                             </div>
                         </dl>
                     </div>
 
                     <div class="flex justify-between">
-                        <button type="button" onclick="history.back()" class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                        <a href="/dashboard" 
+                           class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
                             <i class="fas fa-arrow-left mr-2"></i>
-                            Cancel
+                            Back to Dashboard
+                        </a>
+                        <button type="submit" id="submit-btn" disabled
+                                class="inline-flex items-center px-6 py-3 border border-transparent rounded-md shadow-sm text-base font-medium text-white bg-gray-400 cursor-not-allowed">
+                            <i class="fas fa-lock mr-2"></i>
+                            Validate SMTP First
                         </button>
-                        {{ form.submit(class="inline-flex items-center px-6 py-3 border border-transparent rounded-md shadow-sm text-base font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500", id="submit-btn", disabled=true) }}
                     </div>
                 </div>
             </form>
@@ -152,14 +197,41 @@
 {% block scripts %}
 <script>
 let smtpValidated = false;
+const providers = {{ providers | tojson }};
+
+// Provider selection handler
+document.getElementById('provider').addEventListener('change', function() {
+    const provider = this.value;
+    const helpDiv = document.getElementById('provider-help');
+    const helpText = document.getElementById('provider-help-text');
+    
+    if (provider && providers[provider]) {
+        helpText.textContent = providers[provider].help_text;
+        helpDiv.style.display = 'block';
+        
+        // Auto-fill username with email if it's a common provider
+        const emailField = document.getElementById('email');
+        const usernameField = document.getElementById('username');
+        if (emailField.value && ['gmail', 'outlook', 'yahoo'].includes(provider)) {
+            usernameField.value = emailField.value;
+        }
+    } else {
+        helpDiv.style.display = 'none';
+    }
+    
+    // Reset validation when provider changes
+    smtpValidated = false;
+    updateSubmitButton();
+    document.getElementById('smtp-validation').classList.add('hidden');
+});
 
 // SMTP Validation
 document.getElementById('validate-smtp').addEventListener('click', function() {
-    const email = document.getElementById('email').value;
-    const provider = document.getElementById('smtp_provider').value;
+    const provider = document.getElementById('provider').value;
+    const username = document.getElementById('username').value;
     const password = document.getElementById('password').value;
     
-    if (!email || !provider || !password) {
+    if (!provider || !username || !password) {
         alert('Please fill in all email configuration fields first.');
         return;
     }
@@ -175,11 +247,10 @@ document.getElementById('validate-smtp').addEventListener('click', function() {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'X-CSRFToken': '{{ csrf_token() }}'
         },
         body: JSON.stringify({
-            email: email,
             provider: provider,
+            username: username,
             password: password
         })
     })
@@ -191,21 +262,20 @@ document.getElementById('validate-smtp').addEventListener('click', function() {
         
         validation.classList.remove('hidden');
         
-        if (data.valid) {
+        if (data.success) {
             validation.className = 'p-4 rounded-md bg-green-50 border border-green-200';
             icon.className = 'fas fa-check-circle text-green-600 text-lg';
-            message.textContent = 'SMTP settings validated successfully!';
+            message.textContent = data.message || 'SMTP settings validated successfully!';
             message.className = 'text-sm font-medium text-green-800';
             smtpValidated = true;
-            updateSubmitButton();
         } else {
             validation.className = 'p-4 rounded-md bg-red-50 border border-red-200';
             icon.className = 'fas fa-exclamation-circle text-red-600 text-lg';
             message.textContent = data.message || 'SMTP validation failed. Please check your settings.';
             message.className = 'text-sm font-medium text-red-800';
             smtpValidated = false;
-            updateSubmitButton();
         }
+        updateSubmitButton();
     })
     .catch(error => {
         console.error('Validation error:', error);
@@ -229,33 +299,77 @@ function updateSubmitButton() {
     const submitBtn = document.getElementById('submit-btn');
     if (smtpValidated) {
         submitBtn.disabled = false;
+        submitBtn.className = 'inline-flex items-center px-6 py-3 border border-transparent rounded-md shadow-sm text-base font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500';
         submitBtn.innerHTML = '<i class="fas fa-rocket mr-2"></i>Create Campaign';
     } else {
         submitBtn.disabled = true;
+        submitBtn.className = 'inline-flex items-center px-6 py-3 border border-transparent rounded-md shadow-sm text-base font-medium text-white bg-gray-400 cursor-not-allowed';
         submitBtn.innerHTML = '<i class="fas fa-lock mr-2"></i>Validate SMTP First';
     }
 }
 
+// Form submission
+document.getElementById('campaign-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    if (!smtpValidated) {
+        alert('Please validate your SMTP settings first.');
+        return;
+    }
+    
+    const formData = new FormData(this);
+    const data = Object.fromEntries(formData);
+    
+    const submitBtn = document.getElementById('submit-btn');
+    const originalText = submitBtn.innerHTML;
+    
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Creating Campaign...';
+    submitBtn.disabled = true;
+    
+    fetch('/api/campaigns', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Campaign created successfully!');
+            window.location.href = '/dashboard';
+        } else {
+            alert('Error: ' + (data.message || 'Failed to create campaign'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('An error occurred while creating the campaign.');
+    })
+    .finally(() => {
+        submitBtn.innerHTML = originalText;
+        submitBtn.disabled = false;
+    });
+});
+
 // Update summary when form fields change
 function updateSummary() {
-    const duration = document.getElementById('duration').value || 30;
-    const minEmails = document.getElementById('min_daily_emails').value || 5;
-    const maxEmails = document.getElementById('max_daily_emails').value || 100;
-    const industry = document.getElementById('industry').value || 'Technology';
+    const duration = document.getElementById('warmup_days').value || 30;
+    const volume = document.getElementById('daily_volume').value || 10;
+    const industry = document.getElementById('industry').value || 'business';
     
     document.getElementById('summary-duration').textContent = duration + ' days';
-    document.getElementById('summary-volume').textContent = minEmails + ' - ' + maxEmails + ' emails/day';
-    document.getElementById('summary-industry').textContent = industry.charAt(0).toUpperCase() + industry.slice(1);
+    document.getElementById('summary-volume').textContent = volume + ' emails/day';
+    document.getElementById('summary-industry').textContent = industry.charAt(0).toUpperCase() + industry.slice(1).replace('_', ' ');
     
-    // Calculate estimated total emails (simplified calculation)
-    const avgDaily = (parseInt(minEmails) + parseInt(maxEmails)) / 2;
-    const totalEmails = Math.round(avgDaily * parseInt(duration));
+    const totalEmails = Math.round(parseInt(volume) * parseInt(duration));
     document.getElementById('summary-total').textContent = '~' + totalEmails.toLocaleString() + ' emails';
 }
 
 // Add event listeners for form fields
-['duration', 'min_daily_emails', 'max_daily_emails', 'industry'].forEach(id => {
+['warmup_days', 'daily_volume', 'industry'].forEach(id => {
     document.getElementById(id).addEventListener('change', updateSummary);
+    document.getElementById(id).addEventListener('input', updateSummary);
 });
 
 // Initial summary update
