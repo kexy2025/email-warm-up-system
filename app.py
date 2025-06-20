@@ -1510,9 +1510,7 @@ def manage_recipients():
             category_filter = request.args.get('category', '').strip()
             active_only = request.args.get('active_only', 'false').lower() == 'true'
 
-Here's the continuation of the app.py code from that exact point:
-
-Copy            # Build query - users can only see their own recipients
+# Build query - users can only see their own recipients
             query = Recipient.query.filter_by(user_id=current_user.id)
             
             if active_only:
