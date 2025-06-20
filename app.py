@@ -265,8 +265,8 @@ Thanks,
     }
 }
 
-# Enhanced Warmup Recipients Pool
-WARMUP_RECIPIENTS = [
+# Fallback Recipients Pool (for initial setup/testing)
+FALLBACK_RECIPIENTS = [
     {"email": "sarah.marketing@business-network.com", "name": "Sarah Chen", "industry": "marketing", "responds": True},
     {"email": "mike.tech@innovation-hub.com", "name": "Mike Rodriguez", "industry": "technology", "responds": True},
     {"email": "anna.finance@growth-partners.com", "name": "Anna Thompson", "industry": "finance", "responds": True},
@@ -399,6 +399,49 @@ class LoginAttempt(db.Model):
     def __repr__(self):
         return f'<LoginAttempt {self.email}>'
 
+# NEW: Database-Driven Recipients Model
+class WarmupRecipient(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(120), nullable=False, unique=True)
+    name = db.Column(db.String(100), nullable=False)
+    industry = db.Column(db.String(50), default='business')
+    responds = db.Column(db.Boolean, default=True)
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    last_emailed = db.Column(db.DateTime)
+    email_count = db.Column(db.Integer, default=0)
+    success_rate = db.Column(db.Float, default=0.0)
+    notes = db.Column(db.Text)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'email': self.email,
+            'name': self.name,
+            'industry': self.industry,
+            'responds': self.responds,
+            'is_active': self.is_active,
+            'email_count': self.email_count,
+            'success_rate': round(self.success_rate, 1),
+            'last_emailed': self.last_emailed.isoformat() if self.last_emailed else None,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'notes': self.notes
+        }
+
+    def update_stats(self, success=True):
+        """Update recipient statistics after sending email"""
+        self.email_count += 1
+        self.last_emailed = datetime.utcnow()
+        
+        # Calculate success rate (simplified)
+        if success:
+            self.success_rate = ((self.success_rate * (self.email_count - 1)) + 100) / self.email_count
+        else:
+            self.success_rate = (self.success_rate * (self.email_count - 1)) / self.email_count
+
+    def __repr__(self):
+        return f'<WarmupRecipient {self.email}>'
+
 # Login Manager
 @login_manager.user_loader
 def load_user(user_id):
@@ -516,6 +559,105 @@ def create_demo_user():
         logger.error(f"Failed to create demo user: {str(e)}")
         return None
 
+def create_initial_recipients():
+    """Create initial recipient pool from fallback list"""
+    try:
+        existing_count = WarmupRecipient.query.count()
+        if existing_count == 0:
+            logger.info("Creating initial recipient pool...")
+            
+            for recipient_data in FALLBACK_RECIPIENTS:
+                recipient = WarmupRecipient(
+                    email=recipient_data['email'],
+                    name=recipient_data['name'],
+                    industry=recipient_data['industry'],
+                    responds=recipient_data['responds']
+                )
+                db.session.add(recipient)
+            
+            db.session.commit()
+            logger.info(f"Created {len(FALLBACK_RECIPIENTS)} initial recipients")
+            
+        return True
+    except Exception as e:
+        logger.error(f"Failed to create initial recipients: {str(e)}")
+        return False
+
+# Enhanced Recipient Management Functions
+def get_warmup_recipients(count=10, industry_filter=None, exclude_recently_emailed=True):
+    """Get warmup recipients from database with intelligent selection"""
+    try:
+        # Start with active recipients
+        query = WarmupRecipient.query.filter_by(is_active=True)
+        
+        # Filter by industry if specified
+        if industry_filter:
+            query = query.filter(WarmupRecipient.industry == industry_filter)
+        
+        # Exclude recently emailed recipients (within last 24 hours)
+        if exclude_recently_emailed:
+            yesterday = datetime.utcnow() - timedelta(hours=24)
+            query = query.filter(
+                db.or_(
+                    WarmupRecipient.last_emailed.is_(None),
+                    WarmupRecipient.last_emailed < yesterday
+                )
+            )
+        
+        # Order by least recently emailed, then by email count (load balancing)
+        query = query.order_by(
+            WarmupRecipient.last_emailed.asc().nullsfirst(),
+            WarmupRecipient.email_count.asc()
+        )
+        
+        recipients = query.limit(count).all()
+        
+        # Convert to the format expected by the warmup process
+        recipient_list = []
+        for r in recipients:
+            recipient_list.append({
+                'id': r.id,
+                'email': r.email,
+                'name': r.name,
+                'industry': r.industry,
+                'responds': r.responds
+            })
+        
+        # If we don't have enough recipients, fall back to the hardcoded list
+        if len(recipient_list) < count:
+            logger.warning(f"Only found {len(recipient_list)} recipients in database, falling back to hardcoded list")
+            fallback_needed = count - len(recipient_list)
+            fallback_recipients = random.sample(
+                FALLBACK_RECIPIENTS, 
+                min(fallback_needed, len(FALLBACK_RECIPIENTS))
+            )
+            
+            for fb_recipient in fallback_recipients:
+                recipient_list.append({
+                    'id': None,  # Mark as fallback
+                    'email': fb_recipient['email'],
+                    'name': fb_recipient['name'],
+                    'industry': fb_recipient['industry'],
+                    'responds': fb_recipient['responds']
+                })
+        
+        return recipient_list[:count]
+        
+    except Exception as e:
+        logger.error(f"Error getting warmup recipients: {str(e)}")
+        # Fallback to hardcoded list
+        return random.sample(FALLBACK_RECIPIENTS, min(count, len(FALLBACK_RECIPIENTS)))
+
+def update_recipient_stats(recipient_email, success=True):
+    """Update recipient statistics after sending email"""
+    try:
+        recipient = WarmupRecipient.query.filter_by(email=recipient_email).first()
+        if recipient:
+            recipient.update_stats(success)
+            db.session.commit()
+    except Exception as e:
+        logger.error(f"Error updating recipient stats: {str(e)}")
+
 # Email Generation Functions (keeping existing)
 def generate_fallback_content(content_type, industry, recipient_name, sender_name):
     """Generate fallback email content"""
@@ -562,14 +704,18 @@ def process_spintax(text):
     return text
 
 # Enhanced Email Sending Functions (user-aware)
-def send_warmup_email(campaign_id, recipient_email, recipient_name, content_type):
-    """Send warmup email with enhanced error handling"""
+def send_warmup_email(campaign_id, recipient_data, content_type):
+    """Send warmup email with enhanced error handling and recipient tracking"""
     try:
         with app.app_context():
             campaign = db.session.get(Campaign, campaign_id)
             if not campaign or campaign.status != 'active':
                 logger.error(f"Campaign {campaign_id} not active or not found")
                 return False
+            
+            recipient_email = recipient_data['email']
+            recipient_name = recipient_data['name']
+            recipient_id = recipient_data.get('id')  # Database ID or None for fallback
             
             # Check if user is demo (demo campaigns don't actually send emails)
             user = db.session.get(User, campaign.user_id)
@@ -578,60 +724,75 @@ def send_warmup_email(campaign_id, recipient_email, recipient_name, content_type
                 log_email(campaign_id, recipient_email, "Demo Email", 'sent')
                 campaign.emails_sent += 1
                 update_campaign_success_rate(campaign_id)
-                db.session.commit()
-                return True
+
+# Update recipient stats if it's a database recipient
+            if recipient_id:
+                update_recipient_stats(recipient_email, success=True)
             
-            logger.info(f"Generating email content for {recipient_email}")
-            
-            # Generate content
-            ai_content = generate_fallback_content(
-                content_type, 
-                campaign.industry or 'business', 
-                recipient_name, 
-                campaign.email.split('@')[0].title()
-            )
-            
-            # Get email template
-            template = EMAIL_CONTENT_TYPES[content_type]
-            subject_template = random.choice(template['subject_templates'])
-            
-            # Generate subject
-            subject = process_spintax(subject_template.format(
-                topic=campaign.industry or 'business',
-                industry=(campaign.industry or 'business').replace('_', ' ').title(),
-                date=datetime.now().strftime('%B %d')
-            ))
-            
-            # Generate email body
-            email_body = template['body_template'].format(
-                recipient_name=recipient_name,
-                topic=(campaign.industry or 'business').replace('_', ' '),
-                industry=(campaign.industry or 'business').replace('_', ' ').title(),
-                main_content=ai_content,
-                sender_name=campaign.email.split('@')[0].title()
-            )
-            
-            logger.info(f"Attempting to send email to {recipient_email}")
-            
-            # Send email
-            success = send_smtp_email(campaign, recipient_email, subject, email_body)
-            
-            # Log the email
-            log_email(campaign_id, recipient_email, subject, 'sent' if success else 'failed')
-            
-            if success:
-                # Update campaign stats
-                campaign.emails_sent += 1
-                update_campaign_success_rate(campaign_id)
-                db.session.commit()
-                logger.info(f"Email sent successfully to {recipient_email}")
-                
-            return success
+            db.session.commit()
+            return True
         
+        logger.info(f"Generating email content for {recipient_email}")
+        
+        # Generate content
+        ai_content = generate_fallback_content(
+            content_type, 
+            campaign.industry or 'business', 
+            recipient_name, 
+            campaign.email.split('@')[0].title()
+        )
+        
+        # Get email template
+        template = EMAIL_CONTENT_TYPES[content_type]
+        subject_template = random.choice(template['subject_templates'])
+        
+        # Generate subject
+        subject = process_spintax(subject_template.format(
+            topic=campaign.industry or 'business',
+            industry=(campaign.industry or 'business').replace('_', ' ').title(),
+            date=datetime.now().strftime('%B %d')
+        ))
+        
+        # Generate email body
+        email_body = template['body_template'].format(
+            recipient_name=recipient_name,
+            topic=(campaign.industry or 'business').replace('_', ' '),
+            industry=(campaign.industry or 'business').replace('_', ' ').title(),
+            main_content=ai_content,
+            sender_name=campaign.email.split('@')[0].title()
+        )
+        
+        logger.info(f"Attempting to send email to {recipient_email}")
+        
+        # Send email
+        success = send_smtp_email(campaign, recipient_email, subject, email_body)
+        
+        # Log the email
+        log_email(campaign_id, recipient_email, subject, 'sent' if success else 'failed')
+        
+        if success:
+            # Update campaign stats
+            campaign.emails_sent += 1
+            update_campaign_success_rate(campaign_id)
+            
+            # Update recipient stats if it's a database recipient
+            if recipient_id:
+                update_recipient_stats(recipient_email, success=True)
+            
+            db.session.commit()
+            logger.info(f"Email sent successfully to {recipient_email}")
+        else:
+            # Update recipient stats for failed send if it's a database recipient
+            if recipient_id:
+                update_recipient_stats(recipient_email, success=False)
+            db.session.commit()
+            
+        return success
+    
     except Exception as e:
         logger.error(f"Error sending warmup email: {str(e)}")
         with app.app_context():
-            log_email(campaign_id, recipient_email, "Error", 'failed', str(e))
+            log_email(campaign_id, recipient_data['email'], "Error", 'failed', str(e))
         return False
 
 def send_smtp_email(campaign, recipient_email, subject, body):
@@ -713,7 +874,7 @@ def calculate_campaign_progress(campaign):
 
 # Background Scheduler Functions (safe scheduling)
 def process_warmup_campaigns():
-    """Process all active campaigns for email sending"""
+    """Process all active campaigns for email sending with enhanced recipient management"""
     try:
         with app.app_context():
             active_campaigns = Campaign.query.filter_by(status='active').all()
@@ -738,25 +899,27 @@ def process_warmup_campaigns():
                     emails_to_send = max(0, campaign.daily_volume - today_emails)
                     
                     if emails_to_send > 0:
-                        # Select random recipients
-                        recipients = random.sample(
-                            WARMUP_RECIPIENTS, 
-                            min(emails_to_send, len(WARMUP_RECIPIENTS))
+                        # Get recipients using the new intelligent selection
+                        recipients = get_warmup_recipients(
+                            count=emails_to_send,
+                            industry_filter=campaign.industry if campaign.industry != 'business' else None,
+                            exclude_recently_emailed=True
                         )
+                        
+                        logger.info(f"📋 Selected {len(recipients)} recipients for '{campaign.name}'")
                         
                         for recipient in recipients:
                             content_type = random.choice(list(EMAIL_CONTENT_TYPES.keys()))
                             
                             success = send_warmup_email(
                                 campaign.id,
-                                recipient['email'],
-                                recipient['name'],
+                                recipient,
                                 content_type
                             )
                             
                             logger.info(f"📨 Email to {recipient['email']}: {'✅' if success else '❌'}")
 
-                    # Delay between emails (shorter for demo accounts)
+                            # Delay between emails (shorter for demo accounts)
                             delay = random.uniform(5, 10) if user.is_demo() else random.uniform(30, 60)
                             time.sleep(delay)
                         
@@ -883,6 +1046,12 @@ def campaigns_page():
     """Campaigns list page"""
     return render_template('campaigns.html')
 
+@app.route('/recipients')
+@login_required
+def recipients_page():
+    """Recipients management page"""
+    return render_template('recipients.html')
+
 @app.route('/health')
 def health_check():
     """Health check endpoint for Railway"""
@@ -890,19 +1059,28 @@ def health_check():
         # Test database connection
         db.session.execute(db.text('SELECT 1'))
         db_status = 'connected'
+        
+        # Check recipient count
+        recipient_count = WarmupRecipient.query.count()
+        
     except Exception as e:
         db_status = f'error: {str(e)}'
+        recipient_count = 0
         
     return jsonify({
         'status': 'healthy',
         'database': db_status,
+        'recipients': {
+            'count': recipient_count,
+            'active': WarmupRecipient.query.filter_by(is_active=True).count() if db_status == 'connected' else 0
+        },
         'scheduling': {
             'schedule_available': SCHEDULE_AVAILABLE,
             'apscheduler_available': APSCHEDULER_AVAILABLE,
             'scheduler_active': scheduler is not None
         },
         'timestamp': datetime.now().isoformat(),
-        'version': '3.0.0'
+        'version': '3.1.0'
     })
 
 @app.route('/test')
@@ -1228,6 +1406,265 @@ def api_change_password():
         logger.error(f"Change password error: {str(e)}")
         return jsonify({'success': False, 'message': 'Password change failed'}), 500
 
+# NEW: RECIPIENT MANAGEMENT API ROUTES
+@app.route('/api/recipients', methods=['GET', 'POST'])
+@login_required
+def manage_recipients():
+    if request.method == 'GET':
+        try:
+            page = request.args.get('page', 1, type=int)
+            per_page = request.args.get('per_page', 50, type=int)
+            search = request.args.get('search', '').strip()
+            industry_filter = request.args.get('industry', '').strip()
+            active_only = request.args.get('active_only', 'false').lower() == 'true'
+            
+            # Build query
+            query = WarmupRecipient.query
+            
+            if active_only:
+                query = query.filter_by(is_active=True)
+            
+            if search:
+                query = query.filter(
+                    db.or_(
+                        WarmupRecipient.email.ilike(f'%{search}%'),
+                        WarmupRecipient.name.ilike(f'%{search}%')
+                    )
+                )
+            
+            if industry_filter:
+                query = query.filter_by(industry=industry_filter)
+            
+            # Order by most recently created
+            query = query.order_by(WarmupRecipient.created_at.desc())
+            
+            # Paginate
+            recipients = query.paginate(page=page, per_page=per_page, error_out=False)
+            
+            # Get industry list for filter dropdown
+            industries = db.session.query(WarmupRecipient.industry).distinct().all()
+            industry_list = [i[0] for i in industries if i[0]]
+            
+            return jsonify({
+                'recipients': [r.to_dict() for r in recipients.items],
+                'pagination': {
+                    'page': recipients.page,
+                    'pages': recipients.pages,
+                    'per_page': recipients.per_page,
+                    'total': recipients.total,
+                    'has_next': recipients.has_next,
+                    'has_prev': recipients.has_prev
+                },
+                'industries': sorted(industry_list),
+                'total_count': WarmupRecipient.query.count(),
+                'active_count': WarmupRecipient.query.filter_by(is_active=True).count()
+            })
+            
+        except Exception as e:
+            logger.error(f"Error fetching recipients: {str(e)}")
+            return jsonify({'error': 'Failed to fetch recipients'}), 500
+    
+    elif request.method == 'POST':
+        try:
+            # Only admins can add recipients (or implement user-specific logic)
+            if not current_user.is_admin():
+                return jsonify({'error': 'Admin access required'}), 403
+            
+            data = request.get_json()
+            
+            # Validate required fields
+            if not data.get('email') or not data.get('name'):
+                return jsonify({'success': False, 'message': 'Email and name are required'}), 400
+            
+            # Check if email already exists
+            existing = WarmupRecipient.query.filter_by(email=data['email'].strip().lower()).first()
+            if existing:
+                return jsonify({'success': False, 'message': 'Email already exists'}), 400
+            
+            # Create new recipient
+            recipient = WarmupRecipient(
+                email=data['email'].strip().lower(),
+                name=data['name'].strip(),
+                industry=data.get('industry', 'business').strip(),
+                responds=data.get('responds', True),
+                notes=data.get('notes', '').strip()
+            )
+            
+            db.session.add(recipient)
+            db.session.commit()
+            
+            logger.info(f"New recipient added: {recipient.email}")
+            
+            return jsonify({
+                'success': True,
+                'message': 'Recipient added successfully',
+                'recipient': recipient.to_dict()
+            })
+            
+        except Exception as e:
+            logger.error(f"Error adding recipient: {str(e)}")
+            db.session.rollback()
+            return jsonify({'success': False, 'message': 'Failed to add recipient'}), 500
+
+@app.route('/api/recipients/<int:recipient_id>', methods=['GET', 'PUT', 'DELETE'])
+@login_required
+def recipient_detail(recipient_id):
+    try:
+        recipient = db.session.get(WarmupRecipient, recipient_id)
+        if not recipient:
+            return jsonify({'error': 'Recipient not found'}), 404
+        
+        if request.method == 'GET':
+            return jsonify(recipient.to_dict())
+        
+        elif request.method == 'PUT':
+            # Only admins can edit recipients
+            if not current_user.is_admin():
+                return jsonify({'error': 'Admin access required'}), 403
+            
+            data = request.get_json()
+
+         # Update allowed fields
+            if 'name' in data:
+                recipient.name = data['name'].strip()
+            if 'industry' in data:
+                recipient.industry = data['industry'].strip()
+            if 'responds' in data:
+                recipient.responds = bool(data['responds'])
+            if 'is_active' in data:
+                recipient.is_active = bool(data['is_active'])
+            if 'notes' in data:
+                recipient.notes = data['notes'].strip()
+            
+            db.session.commit()
+            
+            return jsonify({
+                'success': True,
+                'message': 'Recipient updated successfully',
+                'recipient': recipient.to_dict()
+            })
+        
+        elif request.method == 'DELETE':
+            # Only admins can delete recipients
+            if not current_user.is_admin():
+                return jsonify({'error': 'Admin access required'}), 403
+            
+            db.session.delete(recipient)
+            db.session.commit()
+            
+            return jsonify({
+                'success': True,
+                'message': 'Recipient deleted successfully'
+            })
+            
+    except Exception as e:
+        logger.error(f"Recipient detail error: {str(e)}")
+        return jsonify({'success': False, 'message': 'Operation failed'}), 500
+
+@app.route('/api/recipients/bulk-add', methods=['POST'])
+@admin_required
+def bulk_add_recipients():
+    """Bulk add recipients from CSV or JSON data"""
+    try:
+        data = request.get_json()
+        recipients_data = data.get('recipients', [])
+        
+        if not recipients_data:
+            return jsonify({'success': False, 'message': 'No recipients provided'}), 400
+        
+        added_count = 0
+        skipped_count = 0
+        errors = []
+        
+        for recipient_data in recipients_data:
+            try:
+                email = recipient_data.get('email', '').strip().lower()
+                name = recipient_data.get('name', '').strip()
+                
+                if not email or not name:
+                    errors.append(f"Skipped recipient: missing email or name")
+                    skipped_count += 1
+                    continue
+                
+                # Check if already exists
+                existing = WarmupRecipient.query.filter_by(email=email).first()
+                if existing:
+                    errors.append(f"Skipped {email}: already exists")
+                    skipped_count += 1
+                    continue
+                
+                # Create recipient
+                recipient = WarmupRecipient(
+                    email=email,
+                    name=name,
+                    industry=recipient_data.get('industry', 'business').strip(),
+                    responds=recipient_data.get('responds', True),
+                    notes=recipient_data.get('notes', '').strip()
+                )
+                
+                db.session.add(recipient)
+                added_count += 1
+                
+            except Exception as e:
+                errors.append(f"Error with {recipient_data}: {str(e)}")
+                skipped_count += 1
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': f'Added {added_count} recipients, skipped {skipped_count}',
+            'added': added_count,
+            'skipped': skipped_count,
+            'errors': errors[:10]  # Limit errors shown
+        })
+        
+    except Exception as e:
+        logger.error(f"Bulk add recipients error: {str(e)}")
+        db.session.rollback()
+        return jsonify({'success': False, 'message': 'Bulk add failed'}), 500
+
+@app.route('/api/recipients/stats')
+@login_required
+def recipient_stats():
+    """Get recipient statistics"""
+    try:
+        total_recipients = WarmupRecipient.query.count()
+        active_recipients = WarmupRecipient.query.filter_by(is_active=True).count()
+        
+        # Industry breakdown
+        industry_stats = db.session.query(
+            WarmupRecipient.industry,
+            db.func.count(WarmupRecipient.id).label('count')
+        ).group_by(WarmupRecipient.industry).all()
+        
+        # Recent activity
+        recently_emailed = WarmupRecipient.query.filter(
+            WarmupRecipient.last_emailed >= datetime.utcnow() - timedelta(days=7)
+        ).count()
+        
+        # Top performers (highest success rate with reasonable email count)
+        top_performers = WarmupRecipient.query.filter(
+            WarmupRecipient.email_count >= 5,
+            WarmupRecipient.is_active == True
+        ).order_by(WarmupRecipient.success_rate.desc()).limit(10).all()
+        
+        return jsonify({
+            'total_recipients': total_recipients,
+            'active_recipients': active_recipients,
+            'inactive_recipients': total_recipients - active_recipients,
+            'recently_emailed': recently_emailed,
+            'industry_breakdown': [{'industry': i[0], 'count': i[1]} for i in industry_stats],
+            'top_performers': [r.to_dict() for r in top_performers],
+            'average_success_rate': db.session.query(
+                db.func.avg(WarmupRecipient.success_rate)
+            ).filter(WarmupRecipient.email_count > 0).scalar() or 0
+        })
+        
+    except Exception as e:
+        logger.error(f"Recipient stats error: {str(e)}")
+        return jsonify({'error': 'Failed to fetch stats'}), 500
+
 # Debug endpoints for PostgreSQL migration
 @app.route('/api/debug/db-status')
 def db_status():
@@ -1239,6 +1676,7 @@ def db_status():
         campaign_count = Campaign.query.count()
         email_log_count = EmailLog.query.count()
         user_count = User.query.count()
+        recipient_count = WarmupRecipient.query.count()
         
         return jsonify({
             'database_type': 'PostgreSQL' if is_postgresql else 'SQLite',
@@ -1246,6 +1684,7 @@ def db_status():
             'users_count': user_count,
             'campaigns_count': campaign_count,
             'email_logs_count': email_log_count,
+            'recipients_count': recipient_count,
             'migration_ready': is_postgresql and campaign_count == 0,
             'timestamp': datetime.now().isoformat()
         })
@@ -1259,9 +1698,11 @@ def export_current_data():
         campaigns = Campaign.query.all()
         email_logs = EmailLog.query.all()
         users = User.query.all()
+        recipients = WarmupRecipient.query.all()
         
         campaign_data = [campaign.to_dict() for campaign in campaigns]
         user_data = [user.to_dict() for user in users]
+        recipient_data = [recipient.to_dict() for recipient in recipients]
         
         log_data = []
         for log in email_logs:
@@ -1278,9 +1719,11 @@ def export_current_data():
             'users': user_data,
             'campaigns': campaign_data,
             'email_logs': log_data,
+            'recipients': recipient_data,
             'total_users': len(user_data),
             'total_campaigns': len(campaign_data),
             'total_logs': len(log_data),
+            'total_recipients': len(recipient_data),
             'export_time': datetime.now().isoformat()
         })
     except Exception as e:
@@ -1297,6 +1740,7 @@ def dashboard_stats():
             active_campaigns = Campaign.query.filter_by(status='active').count()
             successful_emails = EmailLog.query.filter_by(status='sent').count()
             total_emails = EmailLog.query.count()
+            total_recipients = WarmupRecipient.query.count()
         else:
             # Users see only their stats
             user_campaigns = Campaign.query.filter_by(user_id=current_user.id)
@@ -1304,6 +1748,7 @@ def dashboard_stats():
             
             total_campaigns = user_campaigns.count()
             active_campaigns = user_campaigns.filter_by(status='active').count()
+            total_recipients = WarmupRecipient.query.filter_by(is_active=True).count()
             
             if campaign_ids:
                 successful_emails = EmailLog.query.filter(
@@ -1323,7 +1768,8 @@ def dashboard_stats():
             'total_campaigns': total_campaigns,
             'active_campaigns': active_campaigns,
             'emails_sent': successful_emails,
-            'success_rate': round(success_rate, 1)
+            'success_rate': round(success_rate, 1),
+            'total_recipients': total_recipients
         })
     except Exception as e:
         logger.error(f"Dashboard stats error: {str(e)}")
@@ -1331,7 +1777,8 @@ def dashboard_stats():
             'total_campaigns': 0,
             'active_campaigns': 0,
             'emails_sent': 0,
-            'success_rate': 0.0
+            'success_rate': 0.0,
+            'total_recipients': 0
         })
 
 @app.route('/api/campaigns', methods=['GET', 'POST'])
@@ -1547,7 +1994,7 @@ def validate_smtp():
         if 'amazon_ses' in provider and not username.startswith('AKIA'):
             return jsonify({'success': False, 'message': 'Amazon SES username should start with AKIA'}), 400
 
-# Real SMTP connection test (skip for demo users)
+        # Real SMTP connection test (skip for demo users)
         if current_user.is_demo():
             return jsonify({
                 'success': True, 
@@ -1764,6 +2211,9 @@ def admin_system_stats():
         total_emails = EmailLog.query.count()
         successful_emails = EmailLog.query.filter_by(status='sent').count()
         
+        total_recipients = WarmupRecipient.query.count()
+        active_recipients = WarmupRecipient.query.filter_by(is_active=True).count()
+        
         # Recent activity
         recent_logins = LoginAttempt.query.filter_by(success=True)\
                                          .order_by(LoginAttempt.timestamp.desc())\
@@ -1781,6 +2231,10 @@ def admin_system_stats():
             'campaigns': {
                 'total': total_campaigns,
                 'active': active_campaigns
+            },
+            'recipients': {
+                'total': total_recipients,
+                'active': active_recipients
             },
             'emails': {
                 'total': total_emails,
@@ -1808,41 +2262,8 @@ def not_found(error):
         return render_template('404.html'), 404
     except Exception as template_error:
         logger.error(f"404 template error: {str(template_error)}")
-        # Fallback HTML response if template is missing
-        return '''
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Page Not Found</title>
-            <style>
-                body { font-family: Arial, sans-serif; margin: 40px; text-align: center; }
-                h1 { color: #dc3545; }
-                a { color: #007bff; text-decoration: none; }
-                a:hover { text-decoration: underline; }
-            </style>
-        </head>
-        <body>
-            <h1>404 - Page Not Found</h1>
-            <p>The page you're looking for doesn't exist.</p>
-            <a href="/">Go Home</a>
-        </body>
-        </html>
-        ''', 404
 
-@app.errorhandler(500)
-def internal_error(error):
-    """Handle 500 errors with proper template fallback"""
-    db.session.rollback()
-    logger.error(f"Internal server error: {str(error)}")
-    
-    if request.path.startswith('/api/'):
-        return jsonify({'error': 'Internal server error'}), 500
-    
-    try:
-        return render_template('500.html'), 500
-    except Exception as template_error:
-        logger.error(f"500 template error: {str(template_error)}")
-        # Fallback HTML response if template is missing
+# Fallback HTML response if template is missing
         return '''
         <!DOCTYPE html>
         <html>
@@ -1938,6 +2359,9 @@ def create_tables():
             # Create demo user if it doesn't exist
             create_demo_user()
             
+            # Create initial recipients if none exist
+            create_initial_recipients()
+            
             logger.info("🔧 Database initialization completed")
             
     except Exception as e:
@@ -1964,6 +2388,15 @@ if __name__ == '__main__':
         print(f"   • Email sending: ✅")
         print(f"   • User authentication: ✅")
         print(f"   • Admin panel: ✅")
+        print(f"   • Database-driven recipients: ✅")
+        
+        # Check recipient count
+        try:
+            with app.app_context():
+                recipient_count = WarmupRecipient.query.count()
+                print(f"   • Recipients available: {recipient_count}")
+        except:
+            print(f"   • Recipients: Not yet initialized")
         
         # Run the application
         app.run(
