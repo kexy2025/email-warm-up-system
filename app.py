@@ -1131,7 +1131,7 @@ def reset_password(token):
 @app.route('/profile')
 @login_required
 def profile():
-    return render_template('profile.html')
+    return render_template('profile.html', form=None)
 
 # MAIN ROUTES
 @app.route('/')
