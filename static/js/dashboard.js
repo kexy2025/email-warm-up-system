@@ -43,77 +43,14 @@ class EmailWarmupDashboard {
                     const href = item.getAttribute('href');
                     const onclick = item.getAttribute('onclick');
                     
-                    // Handle logout specially
-                    if (onclick && onclick.includes('handleLogout')) {
-                        e.preventDefault();
-                        this.handleLogout();
-                    }
-                    // Handle other links normally
-                    else if (href && href !== '#') {
+                    // Let base.html handle logout - no interference
+                    if (href && href !== '#') {
                         userMenu.classList.add('hidden');
                         // Let the browser handle the navigation
                     }
                 });
             });
         }
-    }
-
-    // Enhanced logout functionality with emergency fallback
-    async handleLogout() {
-        if (!confirm('Are you sure you want to logout?')) {
-            return;
-        }
-
-        try {
-            const response = await fetch('/api/auth/logout', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                credentials: 'same-origin'
-            });
-
-            const data = await response.json();
-            
-            if (data.success) {
-                // Show success message
-                this.showToast('Logged out successfully', 'success');
-                
-                // Redirect after short delay
-                setTimeout(() => {
-                    window.location.href = data.redirect_url || '/login';
-                }, 1000);
-            } else {
-                throw new Error(data.message || 'Logout failed');
-            }
-        } catch (error) {
-            console.error('Logout error:', error);
-            this.showToast('Logout failed, redirecting anyway...', 'warning');
-            
-            // Emergency fallback: redirect anyway after short delay
-            setTimeout(() => {
-                window.location.href = '/login';
-            }, 1500);
-        }
-    }
-
-    // Emergency logout function for immediate access
-    emergencyLogout() {
-        fetch('/api/auth/logout', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'}
-        }).then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                window.location.href = '/login';
-            } else {
-                // Force logout anyway
-                window.location.href = '/login';
-            }
-        }).catch(() => {
-            // Force logout on error
-            window.location.href = '/login';
-        });
     }
 
     bindEvents() {
@@ -716,9 +653,9 @@ class EmailWarmupDashboard {
         return modal;
     }
 
-// ===========================================
-// EXISTING FUNCTIONALITY (UNCHANGED)
-// ===========================================
+    // ===========================================
+    // EXISTING FUNCTIONALITY (UNCHANGED)
+    // ===========================================
 
     handleProviderChange(provider) {
         const helpDiv = document.getElementById('provider-help');
@@ -808,7 +745,7 @@ class EmailWarmupDashboard {
         }
     }
 
-    renderCampaigns(campaigns) {
+   renderCampaigns(campaigns) {
         const container = document.getElementById('campaigns-container');
         if (!container) return;
 
@@ -1384,8 +1321,8 @@ class EmailWarmupDashboard {
         
         const toast = document.createElement('div');
         toast.className = `toast px-4 py-3 rounded-lg shadow-lg max-w-sm transition-all duration-300 transform translate-x-full opacity-0`;
-
-// Set colors based on type
+        
+        // Set colors based on type
         const colors = {
             success: 'bg-green-500 text-white',
             error: 'bg-red-500 text-white',
@@ -1481,48 +1418,11 @@ function refreshDashboard() {
     }
 }
 
-// Global logout function (used by base.html) - Enhanced with emergency fallback
-function handleLogout() {
-    if (window.dashboard) {
-        window.dashboard.handleLogout();
-    } else {
-        // Emergency fallback if dashboard isn't initialized
-        if (confirm('Are you sure you want to logout?')) {
-            fetch('/api/auth/logout', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'}
-            }).then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    window.location.href = '/login';
-                } else {
-                    window.location.href = '/login';
-                }
-            }).catch(() => {
-                window.location.href = '/login';
-            });
-        }
-    }
-}
-
-// Initialize dashboard
+// Initialize dashboard - FIXED VERSION (no logout conflicts)
 let dashboard;
 document.addEventListener('DOMContentLoaded', function() {
     dashboard = new EmailWarmupDashboard();
     window.dashboard = dashboard;
     
-    // Set global reference for base.html with emergency fallback
-    window.handleLogout = handleLogout;
-    
-    // Override the existing logout function with our enhanced version
-    window.handleLogout = () => {
-        if (dashboard) {
-            dashboard.handleLogout();
-        } else {
-            // Emergency logout if dashboard fails
-            dashboard.emergencyLogout();
-        }
-    };
-    
-    console.log('Dashboard initialized successfully with Recipients Management functionality and enhanced logout');
+    console.log('Dashboard initialized successfully with Recipients Management functionality');
 });
