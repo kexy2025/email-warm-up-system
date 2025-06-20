@@ -291,6 +291,7 @@ class User(UserMixin, db.Model):
     last_login = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     campaigns = db.relationship('Campaign', backref='user', lazy=True, cascade='all, delete-orphan')
+    recipients = db.relationship('Recipient', backref='user', lazy=True, cascade='all, delete-orphan')
 
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
@@ -342,8 +343,10 @@ class Campaign(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    campaign_recipients = db.relationship('CampaignRecipient', backref='campaign', lazy=True, cascade='all, delete-orphan')
 
     def to_dict(self):
+        recipient_count = CampaignRecipient.query.filter_by(campaign_id=self.id).count()
         return {
             'id': self.id,
             'name': self.name,
@@ -357,11 +360,61 @@ class Campaign(db.Model):
             'success_rate': round(self.success_rate, 1),
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
-            'user_id': self.user_id
+            'user_id': self.user_id,
+            'recipient_count': recipient_count
         }
 
     def __repr__(self):
         return f'<Campaign {self.name}>'
+
+class Recipient(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    email = db.Column(db.String(120), nullable=False)
+    category = db.Column(db.String(50), default='General')
+    status = db.Column(db.String(20), default='active')  # active, inactive
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    campaign_recipients = db.relationship('CampaignRecipient', backref='recipient', lazy=True, cascade='all, delete-orphan')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'email': self.email,
+            'category': self.category,
+            'status': self.status,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'user_id': self.user_id
+        }
+
+    def __repr__(self):
+        return f'<Recipient {self.email}>'
+
+class CampaignRecipient(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    campaign_id = db.Column(db.Integer, db.ForeignKey('campaign.id'), nullable=False)
+    recipient_id = db.Column(db.Integer, db.ForeignKey('recipient.id'), nullable=False)
+    assigned_at = db.Column(db.DateTime, default=datetime.utcnow)
+    emails_sent = db.Column(db.Integer, default=0)
+    last_emailed = db.Column(db.DateTime)
+
+    __table_args__ = (db.UniqueConstraint('campaign_id', 'recipient_id', name='unique_campaign_recipient'),)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'campaign_id': self.campaign_id,
+            'recipient_id': self.recipient_id,
+            'assigned_at': self.assigned_at.isoformat() if self.assigned_at else None,
+            'emails_sent': self.emails_sent,
+            'last_emailed': self.last_emailed.isoformat() if self.last_emailed else None
+        }
+
+    def __repr__(self):
+        return f'<CampaignRecipient {self.campaign_id}-{self.recipient_id}>'
 
 class EmailLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -399,7 +452,7 @@ class LoginAttempt(db.Model):
     def __repr__(self):
         return f'<LoginAttempt {self.email}>'
 
-# NEW: Database-Driven Recipients Model
+# NEW: Database-Driven Recipients Model (keeping for backward compatibility)
 class WarmupRecipient(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(120), nullable=False, unique=True)
@@ -584,6 +637,38 @@ def create_initial_recipients():
         return False
 
 # Enhanced Recipient Management Functions
+def get_campaign_recipients(campaign_id, count=10):
+    """Get recipients assigned to a specific campaign"""
+    try:
+        # Get assigned recipients for this campaign
+        campaign_recipients = db.session.query(Recipient)\
+            .join(CampaignRecipient)\
+            .filter(CampaignRecipient.campaign_id == campaign_id)\
+            .filter(Recipient.status == 'active')\
+            .order_by(CampaignRecipient.last_emailed.asc().nullsfirst())\
+            .limit(count).all()
+        
+        recipient_list = []
+        for r in campaign_recipients:
+            recipient_list.append({
+                'id': r.id,
+                'email': r.email,
+                'name': r.name,
+                'category': r.category,
+                'responds': True  # Default for campaign recipients
+            })
+        
+        # If no assigned recipients, fallback to warmup recipients
+        if not recipient_list:
+            logger.warning(f"No assigned recipients for campaign {campaign_id}, using warmup recipients")
+            return get_warmup_recipients(count)
+        
+        return recipient_list
+        
+    except Exception as e:
+        logger.error(f"Error getting campaign recipients: {str(e)}")
+        return get_warmup_recipients(count)  # Fallback
+
 def get_warmup_recipients(count=10, industry_filter=None, exclude_recently_emailed=True):
     """Get warmup recipients from database with intelligent selection"""
     try:
@@ -622,8 +707,8 @@ def get_warmup_recipients(count=10, industry_filter=None, exclude_recently_email
                 'industry': r.industry,
                 'responds': r.responds
             })
-        
-        # If we don't have enough recipients, fall back to the hardcoded list
+
+# If we don't have enough recipients, fall back to the hardcoded list
         if len(recipient_list) < count:
             logger.warning(f"Only found {len(recipient_list)} recipients in database, falling back to hardcoded list")
             fallback_needed = count - len(recipient_list)
@@ -725,12 +810,12 @@ def send_warmup_email(campaign_id, recipient_data, content_type):
                 campaign.emails_sent += 1
                 update_campaign_success_rate(campaign_id)
 
-# Update recipient stats if it's a database recipient
-            if recipient_id:
-                update_recipient_stats(recipient_email, success=True)
-            
-            db.session.commit()
-            return True
+                # Update recipient stats if it's a database recipient
+                if recipient_id:
+                    update_recipient_stats(recipient_email, success=True)
+                
+                db.session.commit()
+                return True
         
         logger.info(f"Generating email content for {recipient_email}")
         
@@ -900,11 +985,18 @@ def process_warmup_campaigns():
                     
                     if emails_to_send > 0:
                         # Get recipients using the new intelligent selection
-                        recipients = get_warmup_recipients(
-                            count=emails_to_send,
-                            industry_filter=campaign.industry if campaign.industry != 'business' else None,
-                            exclude_recently_emailed=True
+                        recipients = get_campaign_recipients(
+                            campaign.id,
+                            count=emails_to_send
                         )
+                        
+                        # If no campaign-specific recipients, use warmup recipients
+                        if not recipients:
+                            recipients = get_warmup_recipients(
+                                count=emails_to_send,
+                                industry_filter=campaign.industry if campaign.industry != 'business' else None,
+                                exclude_recently_emailed=True
+                            )
                         
                         logger.info(f"📋 Selected {len(recipients)} recipients for '{campaign.name}'")
                         
@@ -1415,35 +1507,35 @@ def manage_recipients():
             page = request.args.get('page', 1, type=int)
             per_page = request.args.get('per_page', 50, type=int)
             search = request.args.get('search', '').strip()
-            industry_filter = request.args.get('industry', '').strip()
+            category_filter = request.args.get('category', '').strip()
             active_only = request.args.get('active_only', 'false').lower() == 'true'
             
-            # Build query
-            query = WarmupRecipient.query
+            # Build query - users can only see their own recipients
+            query = Recipient.query.filter_by(user_id=current_user.id)
             
             if active_only:
-                query = query.filter_by(is_active=True)
+                query = query.filter_by(status='active')
             
             if search:
                 query = query.filter(
                     db.or_(
-                        WarmupRecipient.email.ilike(f'%{search}%'),
-                        WarmupRecipient.name.ilike(f'%{search}%')
+                        Recipient.email.ilike(f'%{search}%'),
+                        Recipient.name.ilike(f'%{search}%')
                     )
                 )
             
-            if industry_filter:
-                query = query.filter_by(industry=industry_filter)
+            if category_filter:
+                query = query.filter_by(category=category_filter)
             
             # Order by most recently created
-            query = query.order_by(WarmupRecipient.created_at.desc())
+            query = query.order_by(Recipient.created_at.desc())
             
             # Paginate
             recipients = query.paginate(page=page, per_page=per_page, error_out=False)
             
-            # Get industry list for filter dropdown
-            industries = db.session.query(WarmupRecipient.industry).distinct().all()
-            industry_list = [i[0] for i in industries if i[0]]
+            # Get category list for filter dropdown
+            categories = db.session.query(Recipient.category).filter_by(user_id=current_user.id).distinct().all()
+            category_list = [c[0] for c in categories if c[0]]
             
             return jsonify({
                 'recipients': [r.to_dict() for r in recipients.items],
@@ -1455,9 +1547,9 @@ def manage_recipients():
                     'has_next': recipients.has_next,
                     'has_prev': recipients.has_prev
                 },
-                'industries': sorted(industry_list),
-                'total_count': WarmupRecipient.query.count(),
-                'active_count': WarmupRecipient.query.filter_by(is_active=True).count()
+                'categories': sorted(category_list),
+                'total_count': Recipient.query.filter_by(user_id=current_user.id).count(),
+                'active_count': Recipient.query.filter_by(user_id=current_user.id, status='active').count()
             })
             
         except Exception as e:
@@ -1466,34 +1558,33 @@ def manage_recipients():
     
     elif request.method == 'POST':
         try:
-            # Only admins can add recipients (or implement user-specific logic)
-            if not current_user.is_admin():
-                return jsonify({'error': 'Admin access required'}), 403
-            
             data = request.get_json()
             
             # Validate required fields
             if not data.get('email') or not data.get('name'):
                 return jsonify({'success': False, 'message': 'Email and name are required'}), 400
             
-            # Check if email already exists
-            existing = WarmupRecipient.query.filter_by(email=data['email'].strip().lower()).first()
+            # Check if email already exists for this user
+            existing = Recipient.query.filter_by(
+                email=data['email'].strip().lower(),
+                user_id=current_user.id
+            ).first()
             if existing:
-                return jsonify({'success': False, 'message': 'Email already exists'}), 400
+                return jsonify({'success': False, 'message': 'Email already exists in your recipients'}), 400
             
             # Create new recipient
-            recipient = WarmupRecipient(
+            recipient = Recipient(
                 email=data['email'].strip().lower(),
                 name=data['name'].strip(),
-                industry=data.get('industry', 'business').strip(),
-                responds=data.get('responds', True),
-                notes=data.get('notes', '').strip()
+                category=data.get('category', 'General').strip(),
+                status=data.get('status', 'active'),
+                user_id=current_user.id
             )
             
             db.session.add(recipient)
             db.session.commit()
             
-            logger.info(f"New recipient added: {recipient.email}")
+            logger.info(f"New recipient added by {current_user.username}: {recipient.email}")
             
             return jsonify({
                 'success': True,
@@ -1510,32 +1601,25 @@ def manage_recipients():
 @login_required
 def recipient_detail(recipient_id):
     try:
-        recipient = db.session.get(WarmupRecipient, recipient_id)
-        if not recipient:
+        recipient = db.session.get(Recipient, recipient_id)
+        if not recipient or recipient.user_id != current_user.id:
             return jsonify({'error': 'Recipient not found'}), 404
         
         if request.method == 'GET':
             return jsonify(recipient.to_dict())
         
         elif request.method == 'PUT':
-            # Only admins can edit recipients
-            if not current_user.is_admin():
-                return jsonify({'error': 'Admin access required'}), 403
-            
             data = request.get_json()
 
-         # Update allowed fields
+            # Update allowed fields
             if 'name' in data:
                 recipient.name = data['name'].strip()
-            if 'industry' in data:
-                recipient.industry = data['industry'].strip()
-            if 'responds' in data:
-                recipient.responds = bool(data['responds'])
-            if 'is_active' in data:
-                recipient.is_active = bool(data['is_active'])
-            if 'notes' in data:
-                recipient.notes = data['notes'].strip()
+            if 'category' in data:
+                recipient.category = data['category'].strip()
+            if 'status' in data:
+                recipient.status = data['status']
             
+            recipient.updated_at = datetime.utcnow()
             db.session.commit()
             
             return jsonify({
@@ -1545,10 +1629,6 @@ def recipient_detail(recipient_id):
             })
         
         elif request.method == 'DELETE':
-            # Only admins can delete recipients
-            if not current_user.is_admin():
-                return jsonify({'error': 'Admin access required'}), 403
-            
             db.session.delete(recipient)
             db.session.commit()
             
@@ -1561,173 +1641,247 @@ def recipient_detail(recipient_id):
         logger.error(f"Recipient detail error: {str(e)}")
         return jsonify({'success': False, 'message': 'Operation failed'}), 500
 
-@app.route('/api/recipients/bulk-add', methods=['POST'])
-@admin_required
-def bulk_add_recipients():
-    """Bulk add recipients from CSV or JSON data"""
+@app.route('/api/recipients/<int:recipient_id>/toggle-status', methods=['POST'])
+@login_required
+def toggle_recipient_status(recipient_id):
     try:
-        data = request.get_json()
-        recipients_data = data.get('recipients', [])
+        recipient = db.session.get(Recipient, recipient_id)
+        if not recipient or recipient.user_id != current_user.id:
+            return jsonify({'error': 'Recipient not found'}), 404
         
-        if not recipients_data:
-            return jsonify({'success': False, 'message': 'No recipients provided'}), 400
+        # Toggle status
+        recipient.status = 'inactive' if recipient.status == 'active' else 'active'
+        recipient.updated_at = datetime.utcnow()
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': f'Recipient status updated to {recipient.status}',
+            'recipient': recipient.to_dict()
+        })
+        
+    except Exception as e:
+        logger.error(f"Toggle recipient status error: {str(e)}")
+        return jsonify({'success': False, 'message': 'Failed to update status'}), 500
+
+@app.route('/api/recipients/bulk-import', methods=['POST'])
+@login_required
+def bulk_import_recipients():
+    """Bulk import recipients from file upload"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'success': False, 'message': 'No file uploaded'}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'success': False, 'message': 'No file selected'}), 400
+        
+        if not file.filename.endswith('.csv'):
+            return jsonify({'success': False, 'message': 'Only CSV files are supported'}), 400
+        
+        # Read CSV content
+        import csv
+        import io
+        
+        stream = io.StringIO(file.stream.read().decode("UTF8"), newline=None)
+        csv_input = csv.reader(stream)
         
         added_count = 0
         skipped_count = 0
         errors = []
         
-        for recipient_data in recipients_data:
+        # Skip header row if present
+        headers = next(csv_input, None)
+        if headers and any(header.lower() in ['name', 'email', 'category'] for header in headers):
+            # Headers detected, continue processing
+            pass
+        else:
+            # No headers, treat first row as data
+            stream.seek(0)
+            csv_input = csv.reader(stream)
+        
+        for row_num, row in enumerate(csv_input, start=2):
             try:
-                email = recipient_data.get('email', '').strip().lower()
-                name = recipient_data.get('name', '').strip()
-                
-                if not email or not name:
-                    errors.append(f"Skipped recipient: missing email or name")
+                if len(row) < 2:
+                    errors.append(f"Row {row_num}: Insufficient data (need at least name and email)")
                     skipped_count += 1
                     continue
                 
-                # Check if already exists
-                existing = WarmupRecipient.query.filter_by(email=email).first()
+                name = row[0].strip() if len(row) > 0 else ''
+                email = row[1].strip().lower() if len(row) > 1 else ''
+                category = row[2].strip() if len(row) > 2 else 'General'
+                
+                if not name or not email:
+                    errors.append(f"Row {row_num}: Missing name or email")
+                    skipped_count += 1
+                    continue
+                
+                # Check if already exists for this user
+                existing = Recipient.query.filter_by(email=email, user_id=current_user.id).first()
                 if existing:
-                    errors.append(f"Skipped {email}: already exists")
+                    errors.append(f"Row {row_num}: {email} already exists")
                     skipped_count += 1
                     continue
                 
                 # Create recipient
-                recipient = WarmupRecipient(
-                    email=email,
+                recipient = Recipient(
                     name=name,
-                    industry=recipient_data.get('industry', 'business').strip(),
-                    responds=recipient_data.get('responds', True),
-                    notes=recipient_data.get('notes', '').strip()
+                    email=email,
+                    category=category,
+                    status='active',
+                    user_id=current_user.id
                 )
                 
                 db.session.add(recipient)
                 added_count += 1
                 
             except Exception as e:
-                errors.append(f"Error with {recipient_data}: {str(e)}")
+                errors.append(f"Row {row_num}: {str(e)}")
                 skipped_count += 1
         
         db.session.commit()
         
         return jsonify({
             'success': True,
-            'message': f'Added {added_count} recipients, skipped {skipped_count}',
-            'added': added_count,
-            'skipped': skipped_count,
+            'message': f'Import completed: {added_count} added, {skipped_count} skipped',
+            'imported_count': added_count,
+            'skipped_count': skipped_count,
             'errors': errors[:10]  # Limit errors shown
         })
         
     except Exception as e:
-        logger.error(f"Bulk add recipients error: {str(e)}")
+        logger.error(f"Bulk import recipients error: {str(e)}")
         db.session.rollback()
-        return jsonify({'success': False, 'message': 'Bulk add failed'}), 500
+        return jsonify({'success': False, 'message': 'Import failed'}), 500
 
-@app.route('/api/recipients/stats')
+# CAMPAIGN-RECIPIENTS MANAGEMENT API ROUTES
+@app.route('/api/campaigns/<int:campaign_id>/recipients', methods=['GET', 'POST'])
 @login_required
-def recipient_stats():
-    """Get recipient statistics"""
+def campaign_recipients(campaign_id):
     try:
-        total_recipients = WarmupRecipient.query.count()
-        active_recipients = WarmupRecipient.query.filter_by(is_active=True).count()
+        campaign = db.session.get(Campaign, campaign_id)
+        if not campaign or campaign.user_id != current_user.id:
+            return jsonify({'error': 'Campaign not found'}), 404
         
-        # Industry breakdown
-        industry_stats = db.session.query(
-            WarmupRecipient.industry,
-            db.func.count(WarmupRecipient.id).label('count')
-        ).group_by(WarmupRecipient.industry).all()
+        if request.method == 'GET':
+            # Get recipients assigned to this campaign
+            assigned_recipients = db.session.query(Recipient)\
+                .join(CampaignRecipient)\
+                .filter(CampaignRecipient.campaign_id == campaign_id)\
+                .all()
+            
+            return jsonify([r.to_dict() for r in assigned_recipients])
         
-        # Recent activity
-        recently_emailed = WarmupRecipient.query.filter(
-            WarmupRecipient.last_emailed >= datetime.utcnow() - timedelta(days=7)
-        ).count()
-        
-        # Top performers (highest success rate with reasonable email count)
-        top_performers = WarmupRecipient.query.filter(
-            WarmupRecipient.email_count >= 5,
-            WarmupRecipient.is_active == True
-        ).order_by(WarmupRecipient.success_rate.desc()).limit(10).all()
-        
-        return jsonify({
-            'total_recipients': total_recipients,
-            'active_recipients': active_recipients,
-            'inactive_recipients': total_recipients - active_recipients,
-            'recently_emailed': recently_emailed,
-            'industry_breakdown': [{'industry': i[0], 'count': i[1]} for i in industry_stats],
-            'top_performers': [r.to_dict() for r in top_performers],
-            'average_success_rate': db.session.query(
-                db.func.avg(WarmupRecipient.success_rate)
-            ).filter(WarmupRecipient.email_count > 0).scalar() or 0
-        })
-        
-    except Exception as e:
-        logger.error(f"Recipient stats error: {str(e)}")
-        return jsonify({'error': 'Failed to fetch stats'}), 500
-
-# Debug endpoints for PostgreSQL migration
-@app.route('/api/debug/db-status')
-def db_status():
-    """Check current database status"""
-    try:
-        db_url = os.environ.get('DATABASE_URL', '').strip()
-        is_postgresql = db_url and not db_url.startswith('sqlite')
-        
-        campaign_count = Campaign.query.count()
-        email_log_count = EmailLog.query.count()
-        user_count = User.query.count()
-        recipient_count = WarmupRecipient.query.count()
-        
-        return jsonify({
-            'database_type': 'PostgreSQL' if is_postgresql else 'SQLite',
-            'database_url_prefix': db_url[:30] + '...' if db_url else 'None',
-            'users_count': user_count,
-            'campaigns_count': campaign_count,
-            'email_logs_count': email_log_count,
-            'recipients_count': recipient_count,
-            'migration_ready': is_postgresql and campaign_count == 0,
-            'timestamp': datetime.now().isoformat()
-        })
-    except Exception as e:
-        return jsonify({'error': str(e), 'timestamp': datetime.now().isoformat()})
-
-@app.route('/api/debug/export-data')
-def export_current_data():
-    """Export current data for backup before migration"""
-    try:
-        campaigns = Campaign.query.all()
-        email_logs = EmailLog.query.all()
-        users = User.query.all()
-        recipients = WarmupRecipient.query.all()
-        
-        campaign_data = [campaign.to_dict() for campaign in campaigns]
-        user_data = [user.to_dict() for user in users]
-        recipient_data = [recipient.to_dict() for recipient in recipients]
-        
-        log_data = []
-        for log in email_logs:
-            log_data.append({
-                'campaign_id': log.campaign_id,
-                'recipient': log.recipient,
-                'subject': log.subject,
-                'status': log.status,
-                'error_message': log.error_message,
-                'sent_at': log.sent_at.isoformat() if log.sent_at else None
+        elif request.method == 'POST':
+            data = request.get_json()
+            recipient_id = data.get('recipient_id')
+            
+            if not recipient_id:
+                return jsonify({'success': False, 'message': 'Recipient ID required'}), 400
+            
+            # Verify recipient belongs to current user
+            recipient = db.session.get(Recipient, recipient_id)
+            if not recipient or recipient.user_id != current_user.id:
+                return jsonify({'success': False, 'message': 'Recipient not found'}), 404
+            
+            # Check if already assigned
+            existing = CampaignRecipient.query.filter_by(
+                campaign_id=campaign_id,
+                recipient_id=recipient_id
+            ).first()
+            
+            if existing:
+                return jsonify({'success': False, 'message': 'Recipient already assigned to campaign'}), 400
+            
+            # Create assignment
+            assignment = CampaignRecipient(
+                campaign_id=campaign_id,
+                recipient_id=recipient_id
+            )
+            
+            db.session.add(assignment)
+            db.session.commit()
+            
+            return jsonify({
+                'success': True,
+                'message': 'Recipient assigned to campaign successfully'
             })
+            
+    except Exception as e:
+        logger.error(f"Campaign recipients error: {str(e)}")
+        return jsonify({'success': False, 'message': 'Operation failed'}), 500
+
+@app.route('/api/campaigns/<int:campaign_id>/recipients/<int:recipient_id>', methods=['DELETE'])
+@login_required
+def remove_campaign_recipient(campaign_id, recipient_id):
+    try:
+        campaign = db.session.get(Campaign, campaign_id)
+        if not campaign or campaign.user_id != current_user.id:
+            return jsonify({'error': 'Campaign not found'}), 404
+        
+        # Find assignment
+        assignment = CampaignRecipient.query.filter_by(
+            campaign_id=campaign_id,
+            recipient_id=recipient_id
+        ).first()
+        
+        if not assignment:
+            return jsonify({'success': False, 'message': 'Assignment not found'}), 404
+        
+        db.session.delete(assignment)
+        db.session.commit()
         
         return jsonify({
-            'users': user_data,
-            'campaigns': campaign_data,
-            'email_logs': log_data,
-            'recipients': recipient_data,
-            'total_users': len(user_data),
-            'total_campaigns': len(campaign_data),
-            'total_logs': len(log_data),
-            'total_recipients': len(recipient_data),
-            'export_time': datetime.now().isoformat()
+            'success': True,
+            'message': 'Recipient removed from campaign successfully'
         })
+        
     except Exception as e:
-        return jsonify({'error': str(e)})
+        logger.error(f"Remove campaign recipient error: {str(e)}")
+        return jsonify({'success': False, 'message': 'Operation failed'}), 500
+
+@app.route('/api/campaigns/<int:campaign_id>/recipients/assign-all', methods=['POST'])
+@login_required
+def assign_all_recipients(campaign_id):
+    try:
+        campaign = db.session.get(Campaign, campaign_id)
+        if not campaign or campaign.user_id != current_user.id:
+            return jsonify({'error': 'Campaign not found'}), 404
+        
+        # Get all active recipients for this user
+        active_recipients = Recipient.query.filter_by(
+            user_id=current_user.id,
+            status='active'
+        ).all()
+        
+        # Get already assigned recipient IDs
+        assigned_ids = db.session.query(CampaignRecipient.recipient_id)\
+            .filter_by(campaign_id=campaign_id)\
+            .all()
+        assigned_ids = [id[0] for id in assigned_ids]
+        
+        # Assign unassigned recipients
+        new_assignments = 0
+        for recipient in active_recipients:
+            if recipient.id not in assigned_ids:
+                assignment = CampaignRecipient(
+                    campaign_id=campaign_id,
+                    recipient_id=recipient.id
+                )
+                db.session.add(assignment)
+                new_assignments += 1
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': f'Assigned {new_assignments} recipients to campaign',
+            'count': new_assignments
+        })
+        
+    except Exception as e:
+        logger.error(f"Assign all recipients error: {str(e)}")
+        return jsonify({'success': False, 'message': 'Operation failed'}), 500
 
 # API ROUTES (Enhanced with user awareness)
 @app.route('/api/dashboard-stats')
@@ -1748,7 +1902,7 @@ def dashboard_stats():
             
             total_campaigns = user_campaigns.count()
             active_campaigns = user_campaigns.filter_by(status='active').count()
-            total_recipients = WarmupRecipient.query.filter_by(is_active=True).count()
+            total_recipients = Recipient.query.filter_by(user_id=current_user.id, status='active').count()
             
             if campaign_ids:
                 successful_emails = EmailLog.query.filter(
@@ -1959,6 +2113,9 @@ def get_campaign_stats(campaign_id):
             EmailLog.status == 'sent'
         ).count()
         
+        # Get total recipients assigned to this campaign
+        total_recipients = CampaignRecipient.query.filter_by(campaign_id=campaign_id).count()
+        
         return jsonify({
             'campaign_id': campaign_id,
             'total_emails': total_emails,
@@ -1967,7 +2124,8 @@ def get_campaign_stats(campaign_id):
             'success_rate': round(success_rate, 1),
             'today_emails': today_emails,
             'progress': calculate_campaign_progress(campaign),
-            'daily_target': campaign.daily_volume
+            'daily_target': campaign.daily_volume,
+            'total_recipients': total_recipients
         })
         
     except Exception as e:
@@ -2001,8 +2159,8 @@ def validate_smtp():
                 'message': 'Demo validation successful',
                 'provider_info': SMTP_PROVIDERS[provider]
             })
-        
-        # Test actual SMTP connection for non-demo users
+
+  # Test actual SMTP connection for non-demo users
         smtp_config = SMTP_PROVIDERS[provider]
         
         try:
@@ -2214,6 +2372,8 @@ def admin_system_stats():
         total_recipients = WarmupRecipient.query.count()
         active_recipients = WarmupRecipient.query.filter_by(is_active=True).count()
         
+        user_recipients = Recipient.query.count()
+        
         # Recent activity
         recent_logins = LoginAttempt.query.filter_by(success=True)\
                                          .order_by(LoginAttempt.timestamp.desc())\
@@ -2233,8 +2393,9 @@ def admin_system_stats():
                 'active': active_campaigns
             },
             'recipients': {
-                'total': total_recipients,
-                'active': active_recipients
+                'warmup_total': total_recipients,
+                'warmup_active': active_recipients,
+                'user_total': user_recipients
             },
             'emails': {
                 'total': total_emails,
@@ -2262,8 +2423,40 @@ def not_found(error):
         return render_template('404.html'), 404
     except Exception as template_error:
         logger.error(f"404 template error: {str(template_error)}")
+        # Fallback HTML response if template is missing
+        return '''
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Page Not Found</title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 40px; text-align: center; }
+                h1 { color: #dc3545; }
+                a { color: #007bff; text-decoration: none; }
+                a:hover { text-decoration: underline; }
+            </style>
+        </head>
+        <body>
+            <h1>404 - Page Not Found</h1>
+            <p>The page you're looking for doesn't exist.</p>
+            <a href="/">Go Home</a>
+        </body>
+        </html>
+        ''', 404
 
-# Fallback HTML response if template is missing
+@app.errorhandler(500)
+def internal_error(error):
+    """Handle 500 errors with proper template fallback"""
+    db.session.rollback()
+    
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'Internal server error'}), 500
+    
+    try:
+        return render_template('500.html'), 500
+    except Exception as template_error:
+        logger.error(f"500 template error: {str(template_error)}")
+        # Fallback HTML response if template is missing
         return '''
         <!DOCTYPE html>
         <html>
@@ -2389,12 +2582,15 @@ if __name__ == '__main__':
         print(f"   • User authentication: ✅")
         print(f"   • Admin panel: ✅")
         print(f"   • Database-driven recipients: ✅")
+        print(f"   • User-specific recipients: ✅")
         
         # Check recipient count
         try:
             with app.app_context():
-                recipient_count = WarmupRecipient.query.count()
-                print(f"   • Recipients available: {recipient_count}")
+                warmup_recipient_count = WarmupRecipient.query.count()
+                user_recipient_count = Recipient.query.count()
+                print(f"   • Warmup recipients available: {warmup_recipient_count}")
+                print(f"   • User recipients available: {user_recipient_count}")
         except:
             print(f"   • Recipients: Not yet initialized")
         
