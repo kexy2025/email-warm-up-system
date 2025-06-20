@@ -104,6 +104,9 @@ function loadCampaigns() {
                                 <button onclick="viewCampaign(${campaign.id})" class="inline-flex items-center px-3 py-1 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
                                     <i class="fas fa-eye mr-1"></i> View
                                 </button>
+                                <button onclick="deleteCampaign(${campaign.id}, '${campaign.name}')" class="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-red-700 bg-red-100 hover:bg-red-200">
+                                    <i class="fas fa-trash mr-1"></i> Delete
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -158,6 +161,28 @@ function pauseCampaign(id) {
 function viewCampaign(id) {
     // For now, just show an alert. You can implement a detailed view later
     alert(`Campaign details for ID: ${id}`);
+}
+
+function deleteCampaign(id, name) {
+    if (confirm(`Are you sure you want to delete the campaign "${name}"? This action cannot be undone.`)) {
+        fetch(`/api/campaigns/${id}`, {
+            method: 'DELETE',
+            headers: {'Content-Type': 'application/json'}
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('Campaign deleted successfully!');
+                loadCampaigns(); // Reload the list
+            } else {
+                alert('Error: ' + (data.message || 'Failed to delete campaign'));
+            }
+        })
+        .catch(error => {
+            console.error('Error deleting campaign:', error);
+            alert('Error deleting campaign. Please try again.');
+        });
+    }
 }
 
 // Load campaigns when page loads
