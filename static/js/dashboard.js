@@ -1,4 +1,4 @@
-// Email Warmup Dashboard JavaScript - Clean Version
+// Email Warmup Dashboard JavaScript - Enhanced Version with User Menu Fixes
 class EmailWarmupDashboard {
     constructor() {
         this.providers = {};
@@ -11,6 +11,88 @@ class EmailWarmupDashboard {
         this.loadDashboardStats();
         this.loadCampaigns();
         this.loadProviders();
+        this.initializeUserMenu();
+    }
+
+    // Enhanced user menu initialization
+    initializeUserMenu() {
+        const userMenuButton = document.getElementById('user-menu-button');
+        const userMenu = document.getElementById('user-menu');
+        
+        if (userMenuButton && userMenu) {
+            // Toggle menu on button click
+            userMenuButton.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                userMenu.classList.toggle('hidden');
+            });
+
+            // Close menu when clicking outside
+            document.addEventListener('click', (e) => {
+                if (!userMenuButton.contains(e.target) && !userMenu.contains(e.target)) {
+                    userMenu.classList.add('hidden');
+                }
+            });
+
+            // Handle menu item clicks
+            const menuItems = userMenu.querySelectorAll('a');
+            menuItems.forEach(item => {
+                item.addEventListener('click', (e) => {
+                    const href = item.getAttribute('href');
+                    const onclick = item.getAttribute('onclick');
+                    
+                    // Handle logout specially
+                    if (onclick && onclick.includes('handleLogout')) {
+                        e.preventDefault();
+                        this.handleLogout();
+                    }
+                    // Handle other links normally
+                    else if (href && href !== '#') {
+                        userMenu.classList.add('hidden');
+                        // Let the browser handle the navigation
+                    }
+                });
+            });
+        }
+    }
+
+    // Enhanced logout functionality
+    async handleLogout() {
+        if (!confirm('Are you sure you want to logout?')) {
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/auth/logout', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'same-origin'
+            });
+
+            const data = await response.json();
+            
+            if (data.success) {
+                // Show success message
+                this.showToast('Logged out successfully', 'success');
+                
+                // Redirect after short delay
+                setTimeout(() => {
+                    window.location.href = data.redirect_url || '/login';
+                }, 1000);
+            } else {
+                throw new Error(data.message || 'Logout failed');
+            }
+        } catch (error) {
+            console.error('Logout error:', error);
+            this.showToast('Logout failed, redirecting anyway...', 'warning');
+            
+            // Fallback: redirect anyway after short delay
+            setTimeout(() => {
+                window.location.href = '/login';
+            }, 1500);
+        }
     }
 
     bindEvents() {
@@ -36,6 +118,32 @@ class EmailWarmupDashboard {
                 this.handleProviderChange(e.target.value);
             });
         }
+
+        // Global refresh button
+        const refreshBtn = document.querySelector('[onclick="refreshDashboard()"]');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.refreshDashboard();
+            });
+        }
+    }
+
+    // Enhanced refresh functionality
+    refreshDashboard() {
+        this.showToast('Refreshing dashboard...', 'info');
+        
+        // Reload all data
+        Promise.all([
+            this.loadDashboardStats(),
+            this.loadCampaigns(),
+            this.loadProviders()
+        ]).then(() => {
+            this.showToast('Dashboard refreshed successfully!', 'success');
+        }).catch(error => {
+            console.error('Refresh error:', error);
+            this.showToast('Refresh completed with some errors', 'warning');
+        });
     }
 
     switchTab(tabName) {
@@ -111,7 +219,7 @@ class EmailWarmupDashboard {
         try {
             const response = await fetch('/api/providers');
             const data = await response.json();
-            this.providers = data.providers || {};
+            this.providers = data || {};
         } catch (error) {
             console.error('Failed to load providers:', error);
         }
@@ -122,12 +230,27 @@ class EmailWarmupDashboard {
             const response = await fetch('/api/dashboard-stats');
             const data = await response.json();
             
-            document.getElementById('total-campaigns').textContent = data.total_campaigns || 0;
-            document.getElementById('active-campaigns').textContent = data.active_campaigns || 0;
-            document.getElementById('emails-sent').textContent = data.emails_sent || 0;
-            document.getElementById('success-rate').textContent = (data.success_rate || 0) + '%';
+            // Update stats with fallback values
+            this.updateElement('total-campaigns', data.total_campaigns || 0);
+            this.updateElement('active-campaigns', data.active_campaigns || 0);
+            this.updateElement('emails-sent', data.emails_sent || 0);
+            this.updateElement('success-rate', (data.success_rate || 0).toFixed(1) + '%');
+            
         } catch (error) {
             console.error('Failed to load dashboard stats:', error);
+            // Set default values on error
+            this.updateElement('total-campaigns', 0);
+            this.updateElement('active-campaigns', 0);
+            this.updateElement('emails-sent', 0);
+            this.updateElement('success-rate', '0.0%');
+        }
+    }
+
+    // Helper method to safely update elements
+    updateElement(id, value) {
+        const element = document.getElementById(id);
+        if (element) {
+            element.textContent = value;
         }
     }
 
@@ -181,17 +304,17 @@ class EmailWarmupDashboard {
                             </div>
                             <div class="mt-2 flex space-x-2">
                                 ${campaign.status === 'active' ? 
-                                    `<button onclick="dashboard.pauseCampaign(${campaign.id})" class="text-yellow-600 hover:text-yellow-700">
+                                    `<button onclick="dashboard.pauseCampaign(${campaign.id})" class="text-yellow-600 hover:text-yellow-700" title="Pause">
                                         <i class="fas fa-pause"></i>
                                     </button>` :
-                                    `<button onclick="dashboard.startCampaign(${campaign.id})" class="text-green-600 hover:text-green-700">
+                                    `<button onclick="dashboard.startCampaign(${campaign.id})" class="text-green-600 hover:text-green-700" title="Start">
                                         <i class="fas fa-play"></i>
                                     </button>`
                                 }
-                                <button onclick="dashboard.viewCampaign(${campaign.id})" class="text-blue-600 hover:text-blue-700">
+                                <button onclick="dashboard.viewCampaign(${campaign.id})" class="text-blue-600 hover:text-blue-700" title="View">
                                     <i class="fas fa-eye"></i>
                                 </button>
-                                <button onclick="dashboard.deleteCampaign(${campaign.id})" class="text-red-600 hover:text-red-700">
+                                <button onclick="dashboard.deleteCampaign(${campaign.id})" class="text-red-600 hover:text-red-700" title="Delete">
                                     <i class="fas fa-trash"></i>
                                 </button>
                             </div>
@@ -311,11 +434,22 @@ class EmailWarmupDashboard {
             const response = await fetch(`/api/campaigns/${campaignId}`);
             const campaign = await response.json();
             
-            const modal = document.getElementById('campaign-modal');
-            const content = document.getElementById('modal-content');
+            // Create modal if it doesn't exist
+            let modal = document.getElementById('campaign-modal');
+            if (!modal) {
+                modal = this.createModal();
+                document.body.appendChild(modal);
+            }
             
+            const content = document.getElementById('modal-content');
             content.innerHTML = `
                 <div class="space-y-4">
+                    <div class="flex justify-between items-center">
+                        <h3 class="text-lg font-medium text-gray-900">Campaign Details</h3>
+                        <button onclick="dashboard.closeModal()" class="text-gray-400 hover:text-gray-600">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
                     <div class="grid grid-cols-2 gap-4">
                         <div>
                             <h4 class="font-medium text-gray-900">Campaign Name</h4>
@@ -333,14 +467,52 @@ class EmailWarmupDashboard {
                             <h4 class="font-medium text-gray-900">Status</h4>
                             <span class="status-badge status-${campaign.status || 'created'}">${(campaign.status || 'created').toUpperCase()}</span>
                         </div>
+                        <div>
+                            <h4 class="font-medium text-gray-900">Industry</h4>
+                            <p class="text-sm text-gray-600">${campaign.industry || 'N/A'}</p>
+                        </div>
+                        <div>
+                            <h4 class="font-medium text-gray-900">Daily Volume</h4>
+                            <p class="text-sm text-gray-600">${campaign.daily_volume || 0} emails/day</p>
+                        </div>
+                        <div>
+                            <h4 class="font-medium text-gray-900">Emails Sent</h4>
+                            <p class="text-sm text-gray-600">${campaign.emails_sent || 0}</p>
+                        </div>
+                        <div>
+                            <h4 class="font-medium text-gray-900">Success Rate</h4>
+                            <p class="text-sm text-gray-600">${campaign.success_rate || 0}%</p>
+                        </div>
                     </div>
                 </div>
             `;
             
             modal.classList.add('show');
+            modal.style.display = 'flex';
         } catch (error) {
             this.showToast('Failed to load campaign details', 'error');
         }
+    }
+
+    createModal() {
+        const modal = document.createElement('div');
+        modal.id = 'campaign-modal';
+        modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+        modal.style.display = 'none';
+        modal.innerHTML = `
+            <div class="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-96 overflow-y-auto">
+                <div id="modal-content"></div>
+            </div>
+        `;
+        
+        // Close modal when clicking outside
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                this.closeModal();
+            }
+        });
+        
+        return modal;
     }
 
     async testConnection() {
@@ -381,16 +553,16 @@ class EmailWarmupDashboard {
             const response = await fetch('/api/campaigns');
             const campaigns = await response.json();
             
+            const analyticsContainer = document.querySelector('#analytics-tab');
+            if (!analyticsContainer) return;
+            
             if (campaigns.length === 0) {
-                const analyticsContainer = document.querySelector('#analytics-tab');
-                if (analyticsContainer) {
-                    analyticsContainer.innerHTML = `
-                        <div class="text-center py-12 text-gray-500">
-                            <i class="fas fa-chart-line text-4xl mb-4"></i>
-                            <p class="text-lg">Analytics will appear here once you have active campaigns</p>
-                        </div>
-                    `;
-                }
+                analyticsContainer.innerHTML = `
+                    <div class="text-center py-12 text-gray-500">
+                        <i class="fas fa-chart-line text-4xl mb-4"></i>
+                        <p class="text-lg">Analytics will appear here once you have active campaigns</p>
+                    </div>
+                `;
                 return;
             }
 
@@ -398,8 +570,7 @@ class EmailWarmupDashboard {
             const statsResponse = await fetch(`/api/campaigns/${activeCampaign.id}/stats`);
             const stats = await statsResponse.json();
             
-            const analyticsContainer = document.querySelector('#analytics-tab');
-            if (analyticsContainer && stats && !stats.error) {
+            if (stats && !stats.error) {
                 analyticsContainer.innerHTML = `
                     <div>
                         <h2 class="text-lg font-medium text-gray-900 mb-6">
@@ -427,33 +598,83 @@ class EmailWarmupDashboard {
     }
 
     showLoading(show) {
-        const overlay = document.getElementById('loading-overlay');
+        let overlay = document.getElementById('loading-overlay');
+        if (show && !overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'loading-overlay';
+            overlay.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+            overlay.innerHTML = `
+                <div class="bg-white rounded-lg p-6 flex items-center space-x-3">
+                    <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                    <span class="text-gray-700">Loading...</span>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+        }
+        
         if (overlay) {
-            if (show) {
-                overlay.classList.add('show');
-            } else {
-                overlay.classList.remove('show');
+            overlay.style.display = show ? 'flex' : 'none';
+            if (!show) {
+                setTimeout(() => {
+                    if (overlay && overlay.parentNode) {
+                        overlay.parentNode.removeChild(overlay);
+                    }
+                }, 300);
             }
         }
     }
 
     showToast(message, type = 'success') {
-        const container = document.getElementById('toast-container');
-        if (!container) return;
+        // Create toast container if it doesn't exist
+        let container = document.getElementById('toast-container');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'toast-container';
+            container.className = 'fixed top-4 right-4 z-50 space-y-2';
+            document.body.appendChild(container);
+        }
         
         const toast = document.createElement('div');
-        toast.className = `toast toast-${type}`;
+        toast.className = `toast px-4 py-3 rounded-lg shadow-lg max-w-sm transition-all duration-300 transform translate-x-full opacity-0`;
+        
+        // Set colors based on type
+        const colors = {
+            success: 'bg-green-500 text-white',
+            error: 'bg-red-500 text-white',
+            warning: 'bg-yellow-500 text-white',
+            info: 'bg-blue-500 text-white'
+        };
+        
+        const icons = {
+            success: 'check-circle',
+            error: 'exclamation-triangle',
+            warning: 'exclamation-circle',
+            info: 'info-circle'
+        };
+        
+        toast.className += ` ${colors[type] || colors.info}`;
         toast.innerHTML = `
-            <i class="fas fa-${type === 'success' ? 'check' : type === 'error' ? 'times' : 'exclamation'} mr-2"></i>
-            ${message}
+            <div class="flex items-center justify-between">
+                <div class="flex items-center">
+                    <i class="fas fa-${icons[type] || icons.info} mr-2"></i>
+                    <span>${message}</span>
+                </div>
+                <button type="button" class="ml-4 text-white hover:text-gray-200" onclick="this.parentElement.parentElement.remove()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
         `;
         
         container.appendChild(toast);
         
-        setTimeout(() => toast.classList.add('show'), 100);
-        
+        // Animate in
         setTimeout(() => {
-            toast.classList.remove('show');
+            toast.classList.remove('translate-x-full', 'opacity-0');
+        }, 100);
+        
+        // Auto-remove after 5 seconds
+        setTimeout(() => {
+            toast.classList.add('translate-x-full', 'opacity-0');
             setTimeout(() => {
                 if (container.contains(toast)) {
                     container.removeChild(toast);
@@ -466,6 +687,7 @@ class EmailWarmupDashboard {
         const modal = document.getElementById('campaign-modal');
         if (modal) {
             modal.classList.remove('show');
+            modal.style.display = 'none';
         }
     }
 }
@@ -495,9 +717,16 @@ function closeModal() {
     }
 }
 
-function logout() {
-    if (confirm('Are you sure you want to logout?')) {
-        window.location.reload();
+function refreshDashboard() {
+    if (window.dashboard) {
+        window.dashboard.refreshDashboard();
+    }
+}
+
+// Global logout function (used by base.html)
+function handleLogout() {
+    if (window.dashboard) {
+        window.dashboard.handleLogout();
     }
 }
 
@@ -506,4 +735,9 @@ let dashboard;
 document.addEventListener('DOMContentLoaded', function() {
     dashboard = new EmailWarmupDashboard();
     window.dashboard = dashboard;
+    
+    // Set global reference for base.html
+    window.handleLogout = () => dashboard.handleLogout();
+    
+    console.log('Dashboard initialized successfully with enhanced user menu functionality');
 });
