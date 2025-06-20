@@ -1509,8 +1509,10 @@ def manage_recipients():
             search = request.args.get('search', '').strip()
             category_filter = request.args.get('category', '').strip()
             active_only = request.args.get('active_only', 'false').lower() == 'true'
-            
-            # Build query - users can only see their own recipients
+
+Here's the continuation of the app.py code from that exact point:
+
+Copy            # Build query - users can only see their own recipients
             query = Recipient.query.filter_by(user_id=current_user.id)
             
             if active_only:
@@ -1523,9 +1525,7 @@ def manage_recipients():
                         Recipient.name.ilike(f'%{search}%')
                     )
                 )
-
-
-
+            
             if category_filter:
                 query = query.filter_by(category=category_filter)
             
@@ -1557,43 +1557,6 @@ def manage_recipients():
         except Exception as e:
             logger.error(f"Error fetching recipients: {str(e)}")
             return jsonify({'error': 'Failed to fetch recipients'}), 500
-
-except Exception as e:
-            logger.error(f"Error fetching recipients: {str(e)}")
-            return jsonify({'error': 'Failed to fetch recipients'}), 500
-    
-    elif request.method == 'POST':
-        # ... POST method code ...
-
-@app.route('/api/recipients/stats')
-@login_required
-def recipient_stats():
-    """Get recipient statistics"""
-    try:
-        if current_user.is_admin():
-            total_recipients = Recipient.query.count() + WarmupRecipient.query.count()
-            active_recipients = Recipient.query.filter_by(status='active').count() + WarmupRecipient.query.filter_by(is_active=True).count()
-        else:
-            total_recipients = Recipient.query.filter_by(user_id=current_user.id).count()
-            active_recipients = Recipient.query.filter_by(user_id=current_user.id, status='active').count()
-        
-        return jsonify({
-            'total_recipients': total_recipients,
-            'active_recipients': active_recipients,
-            'inactive_recipients': total_recipients - active_recipients,
-            'recently_emailed': 0,
-            'average_success_rate': 0
-        })
-        
-    except Exception as e:
-        logger.error(f"Recipient stats error: {str(e)}")
-        return jsonify({
-            'total_recipients': 0,
-            'active_recipients': 0,
-            'inactive_recipients': 0,
-            'recently_emailed': 0,
-            'average_success_rate': 0
-        })
     
     elif request.method == 'POST':
         try:
@@ -1635,6 +1598,36 @@ def recipient_stats():
             logger.error(f"Error adding recipient: {str(e)}")
             db.session.rollback()
             return jsonify({'success': False, 'message': 'Failed to add recipient'}), 500
+
+@app.route('/api/recipients/stats')
+@login_required
+def recipient_stats():
+    """Get recipient statistics"""
+    try:
+        if current_user.is_admin():
+            total_recipients = Recipient.query.count() + WarmupRecipient.query.count()
+            active_recipients = Recipient.query.filter_by(status='active').count() + WarmupRecipient.query.filter_by(is_active=True).count()
+        else:
+            total_recipients = Recipient.query.filter_by(user_id=current_user.id).count()
+            active_recipients = Recipient.query.filter_by(user_id=current_user.id, status='active').count()
+        
+        return jsonify({
+            'total_recipients': total_recipients,
+            'active_recipients': active_recipients,
+            'inactive_recipients': total_recipients - active_recipients,
+            'recently_emailed': 0,
+            'average_success_rate': 0
+        })
+        
+    except Exception as e:
+        logger.error(f"Recipient stats error: {str(e)}")
+        return jsonify({
+            'total_recipients': 0,
+            'active_recipients': 0,
+            'inactive_recipients': 0,
+            'recently_emailed': 0,
+            'average_success_rate': 0
+        })
 
 @app.route('/api/recipients/<int:recipient_id>', methods=['GET', 'PUT', 'DELETE'])
 @login_required
@@ -2199,7 +2192,7 @@ def validate_smtp():
                 'provider_info': SMTP_PROVIDERS[provider]
             })
 
-  # Test actual SMTP connection for non-demo users
+        # Test actual SMTP connection for non-demo users
         smtp_config = SMTP_PROVIDERS[provider]
         
         try:
@@ -2257,8 +2250,8 @@ def get_email_logs(campaign_id):
         # Check ownership
         if not current_user.is_admin() and campaign.user_id != current_user.id:
             return jsonify({'error': 'Access denied'}), 403
-        
-        # Pagination
+
+# Pagination
         page = request.args.get('page', 1, type=int)
         per_page = request.args.get('per_page', 50, type=int)
         
