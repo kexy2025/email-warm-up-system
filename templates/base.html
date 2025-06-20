@@ -171,9 +171,9 @@
                                 
                                 <div class="border-t border-gray-100"></div>
                                 
-                                <a href="#" onclick="handleLogout()" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 cursor-pointer transition-colors duration-150">
+                                <button type="button" onclick="handleLogout()" class="w-full text-left block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 cursor-pointer transition-colors duration-150">
                                     <i class="fas fa-sign-out-alt mr-3 text-gray-400"></i>Sign Out
-                                </a>
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -210,6 +210,12 @@
                         <i class="fas fa-plus mr-3"></i>Create Campaign
                     </a>
                     {% endif %}
+                    
+                    <div class="border-t border-gray-200 my-2"></div>
+                    
+                    <button type="button" onclick="handleLogout()" class="w-full text-left block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50">
+                        <i class="fas fa-sign-out-alt mr-3"></i>Sign Out
+                    </button>
                 </div>
             </div>
         </div>
@@ -329,19 +335,22 @@
             });
         }
 
-        // Enhanced logout functionality
+        // Enhanced logout functionality with better error handling
         function handleLogout() {
+            console.log('Logout button clicked');
+            
             if (!confirm('Are you sure you want to sign out?')) {
                 return;
             }
 
             // Show loading state
-            const logoutLink = document.querySelector('[onclick="handleLogout()"]');
-            if (logoutLink) {
-                logoutLink.innerHTML = '<i class="fas fa-spinner fa-spin mr-3 text-gray-400"></i>Signing out...';
-                logoutLink.style.pointerEvents = 'none';
-            }
+            const logoutButtons = document.querySelectorAll('[onclick="handleLogout()"]');
+            logoutButtons.forEach(button => {
+                button.innerHTML = '<i class="fas fa-spinner fa-spin mr-3 text-gray-400"></i>Signing out...';
+                button.style.pointerEvents = 'none';
+            });
 
+            // Try POST request first
             fetch('/api/auth/logout', {
                 method: 'POST',
                 headers: {
@@ -349,10 +358,19 @@
                 },
                 credentials: 'same-origin'
             })
-            .then(response => response.json())
+            .then(response => {
+                console.log('Logout response status:', response.status);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                return response.json();
+            })
             .then(data => {
+                console.log('Logout response data:', data);
+                
                 if (data.success) {
-                    // Show success message briefly
                     showToast('Signed out successfully', 'success');
                     setTimeout(() => {
                         window.location.href = data.redirect_url || '/login';
@@ -362,12 +380,24 @@
                 }
             })
             .catch(error => {
-                console.error('Logout error:', error);
-                showToast('Logout failed, redirecting anyway...', 'warning');
-                // Fallback: redirect anyway
+                console.error('POST logout failed, trying GET fallback:', error);
+                
+                // Fallback: try GET method by redirecting
+                showToast('Redirecting to logout...', 'info');
                 setTimeout(() => {
-                    window.location.href = '/login';
-                }, 1000);
+                    window.location.href = '/api/auth/logout';
+                }, 500);
+            })
+            .finally(() => {
+                // Reset button state if still on page
+                setTimeout(() => {
+                    logoutButtons.forEach(button => {
+                        if (document.contains(button)) {
+                            button.innerHTML = '<i class="fas fa-sign-out-alt mr-3 text-gray-400"></i>Sign Out';
+                            button.style.pointerEvents = 'auto';
+                        }
+                    });
+                }, 3000);
             });
         }
 
@@ -383,10 +413,17 @@
                 info: 'bg-blue-500'
             };
             
+            const icons = {
+                success: 'check',
+                error: 'times',
+                warning: 'exclamation',
+                info: 'info'
+            };
+            
             toastContainer.innerHTML = `
                 <div class="${colors[type]} text-white px-4 py-2 rounded-lg shadow-lg transform translate-x-full transition-transform duration-300">
                     <div class="flex items-center">
-                        <i class="fas fa-${type === 'success' ? 'check' : type === 'error' ? 'times' : type === 'warning' ? 'exclamation' : 'info'} mr-2"></i>
+                        <i class="fas fa-${icons[type]} mr-2"></i>
                         <span>${message}</span>
                     </div>
                 </div>
@@ -403,7 +440,9 @@
             setTimeout(() => {
                 toastContainer.querySelector('div').classList.add('translate-x-full');
                 setTimeout(() => {
-                    document.body.removeChild(toastContainer);
+                    if (document.body.contains(toastContainer)) {
+                        document.body.removeChild(toastContainer);
+                    }
                 }, 300);
             }, 3000);
         }
@@ -414,7 +453,11 @@
             alerts.forEach(alert => {
                 alert.style.transition = 'opacity 0.5s';
                 alert.style.opacity = '0';
-                setTimeout(() => alert.remove(), 500);
+                setTimeout(() => {
+                    if (alert.parentNode) {
+                        alert.remove();
+                    }
+                }, 500);
             });
         }, 5000);
 
