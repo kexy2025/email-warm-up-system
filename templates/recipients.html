@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Recipients - Email Warmup{% endblock %}
+{% block title %}Recipients - KEXY Email Warmup{% endblock %}
 
 {% block content %}
 <div class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
@@ -12,19 +12,17 @@
                 <p class="text-gray-600 mt-1">Manage your email warmup recipient pool for better deliverability.</p>
             </div>
             <div class="flex space-x-3">
-                {% if current_user.is_admin() %}
-                <button onclick="showAddRecipientModal()" 
+                <button onclick="dashboard.showAddRecipientModal()" 
                         class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
                     <i class="fas fa-plus mr-2"></i>
                     Add Recipient
                 </button>
-                <button onclick="showBulkImportModal()" 
+                <button onclick="dashboard.showBulkImportModal()" 
                         class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
                     <i class="fas fa-upload mr-2"></i>
                     Bulk Import
                 </button>
-                {% endif %}
-                <button onclick="refreshRecipients()" 
+                <button onclick="dashboard.refreshDashboard()" 
                         class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
                     <i class="fas fa-sync-alt mr-2"></i>
                     Refresh
@@ -104,22 +102,27 @@
                            class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Industry</label>
-                    <select id="industry-filter" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">
-                        <option value="">All Industries</option>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Category</label>
+                    <select id="category-filter" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">
+                        <option value="">All Categories</option>
+                        <option value="General">General</option>
+                        <option value="Business">Business</option>
+                        <option value="Personal">Personal</option>
+                        <option value="Marketing">Marketing</option>
+                        <option value="Support">Support</option>
                     </select>
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Status</label>
                     <select id="status-filter" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">
                         <option value="">All Recipients</option>
-                        <option value="true">Active Only</option>
-                        <option value="false">Inactive Only</option>
+                        <option value="active">Active Only</option>
+                        <option value="inactive">Inactive Only</option>
                     </select>
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Actions</label>
-                    <button onclick="applyFilters()" 
+                    <button onclick="dashboard.loadRecipients()" 
                             class="w-full bg-blue-600 text-white rounded-md px-3 py-2 text-sm hover:bg-blue-700">
                         Apply Filters
                     </button>
@@ -128,31 +131,14 @@
         </div>
     </div>
 
-    <!-- Recipients Table -->
+    <!-- Recipients List -->
     <div class="px-4 sm:px-0">
         <div class="bg-white shadow-lg rounded-lg overflow-hidden">
             <div class="px-6 py-4 border-b border-gray-200">
                 <h3 class="text-lg font-medium text-gray-900">Recipients List</h3>
             </div>
-            <div class="overflow-x-auto">
-                <table class="min-w-full divide-y divide-gray-200">
-                    <thead class="bg-gray-50">
-                        <tr>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Recipient</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Industry</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email Count</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Success Rate</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Emailed</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                            {% if current_user.is_admin() %}
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                            {% endif %}
-                        </tr>
-                    </thead>
-                    <tbody id="recipients-table-body" class="bg-white divide-y divide-gray-200">
-                        <!-- Recipients will be loaded here -->
-                    </tbody>
-                </table>
+            <div id="recipients-list" class="p-6">
+                <!-- Recipients will be loaded here by JavaScript -->
             </div>
             
             <!-- Pagination -->
@@ -168,7 +154,7 @@
     <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
         <div class="flex justify-between items-center mb-4">
             <h3 class="text-lg font-medium text-gray-900">Add New Recipient</h3>
-            <button onclick="closeAddRecipientModal()" class="text-gray-400 hover:text-gray-600">
+            <button onclick="dashboard.closeModal()" class="text-gray-400 hover:text-gray-600">
                 <i class="fas fa-times"></i>
             </button>
         </div>
@@ -186,35 +172,26 @@
                            class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Industry</label>
-                    <select id="recipient-industry" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">
-                        <option value="business">Business</option>
-                        <option value="marketing">Marketing</option>
-                        <option value="technology">Technology</option>
-                        <option value="finance">Finance</option>
-                        <option value="healthcare">Healthcare</option>
-                        <option value="education">Education</option>
-                        <option value="consulting">Consulting</option>
-                        <option value="retail">Retail</option>
-                        <option value="real_estate">Real Estate</option>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                    <select id="recipient-category" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">
+                        <option value="General">General</option>
+                        <option value="Business">Business</option>
+                        <option value="Personal">Personal</option>
+                        <option value="Marketing">Marketing</option>
+                        <option value="Support">Support</option>
                     </select>
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Notes (Optional)</label>
-                    <textarea id="recipient-notes" rows="3" 
-                              class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"></textarea>
-                </div>
-                <div class="flex items-center">
-                    <input type="checkbox" id="recipient-responds" checked 
-                           class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
-                    <label for="recipient-responds" class="ml-2 block text-sm text-gray-900">
-                        Can respond to emails
-                    </label>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                    <select id="recipient-status" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                    </select>
                 </div>
             </div>
             
             <div class="flex justify-end space-x-3 mt-6">
-                <button type="button" onclick="closeAddRecipientModal()" 
+                <button type="button" onclick="dashboard.closeModal()" 
                         class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
                     Cancel
                 </button>
@@ -232,36 +209,36 @@
     <div class="bg-white rounded-lg p-6 max-w-2xl w-full mx-4">
         <div class="flex justify-between items-center mb-4">
             <h3 class="text-lg font-medium text-gray-900">Bulk Import Recipients</h3>
-            <button onclick="closeBulkImportModal()" class="text-gray-400 hover:text-gray-600">
+            <button onclick="dashboard.closeModal()" class="text-gray-400 hover:text-gray-600">
                 <i class="fas fa-times"></i>
             </button>
         </div>
         
         <div class="mb-4">
             <p class="text-sm text-gray-600 mb-2">
-                Paste recipient data in JSON format. Each recipient should have email, name, and optionally industry.
+                Upload a CSV file with recipient data. The file should have columns: name, email, category
             </p>
             <div class="bg-gray-100 p-3 rounded text-xs text-gray-700">
-                Example format:<br>
-                [<br>
-                &nbsp;&nbsp;{"email": "john@example.com", "name": "John Doe", "industry": "marketing"},<br>
-                &nbsp;&nbsp;{"email": "jane@example.com", "name": "Jane Smith", "industry": "technology"}<br>
-                ]
+                Example CSV format:<br>
+                <code>
+                name,email,category<br>
+                John Doe,john@example.com,Business<br>
+                Jane Smith,jane@example.com,Marketing
+                </code>
             </div>
         </div>
         
         <form id="bulk-import-form">
             <div class="space-y-4">
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Recipients Data</label>
-                    <textarea id="bulk-recipients-data" rows="10" required 
-                              class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-mono"
-                              placeholder='[{"email": "example@domain.com", "name": "Example User", "industry": "business"}]'></textarea>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">CSV File</label>
+                    <input type="file" id="csv-file-input" accept=".csv" required
+                           class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">
                 </div>
             </div>
             
             <div class="flex justify-end space-x-3 mt-6">
-                <button type="button" onclick="closeBulkImportModal()" 
+                <button type="button" onclick="dashboard.closeModal()" 
                         class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
                     Cancel
                 </button>
@@ -287,5 +264,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/recipients.js') }}"></script>
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 {% endblock %}
