@@ -1,8 +1,9 @@
-// Email Warmup Dashboard JavaScript - Enhanced Version with User Menu Fixes
+// Email Warmup Dashboard JavaScript - Enhanced Version with Recipients Management
 class EmailWarmupDashboard {
     constructor() {
         this.providers = {};
         this.campaigns = [];
+        this.recipients = [];
         this.init();
     }
 
@@ -11,6 +12,7 @@ class EmailWarmupDashboard {
         this.loadDashboardStats();
         this.loadCampaigns();
         this.loadProviders();
+        this.loadRecipients();
         this.initializeUserMenu();
     }
 
@@ -100,7 +102,8 @@ class EmailWarmupDashboard {
         document.querySelectorAll('.tab-button').forEach(button => {
             button.addEventListener('click', (e) => {
                 const tabName = e.target.textContent.toLowerCase().includes('create') ? 'create' : 
-                              e.target.textContent.toLowerCase().includes('analytics') ? 'analytics' : 'campaigns';
+                              e.target.textContent.toLowerCase().includes('analytics') ? 'analytics' : 
+                              e.target.textContent.toLowerCase().includes('recipients') ? 'recipients' : 'campaigns';
                 this.switchTab(tabName);
             });
         });
@@ -109,6 +112,12 @@ class EmailWarmupDashboard {
         const form = document.getElementById('campaign-form');
         if (form) {
             form.addEventListener('submit', this.handleFormSubmit.bind(this));
+        }
+
+        // Recipients form
+        const recipientsForm = document.getElementById('recipients-form');
+        if (recipientsForm) {
+            recipientsForm.addEventListener('submit', this.handleRecipientsSubmit.bind(this));
         }
 
         // Provider change
@@ -127,6 +136,23 @@ class EmailWarmupDashboard {
                 this.refreshDashboard();
             });
         }
+
+        // Recipients management buttons
+        this.bindRecipientEvents();
+    }
+
+    bindRecipientEvents() {
+        // Bulk import button
+        const bulkImportBtn = document.getElementById('bulk-import-btn');
+        if (bulkImportBtn) {
+            bulkImportBtn.addEventListener('click', () => this.showBulkImportModal());
+        }
+
+        // File upload handler
+        const fileInput = document.getElementById('csv-file-input');
+        if (fileInput) {
+            fileInput.addEventListener('change', (e) => this.handleFileUpload(e));
+        }
     }
 
     // Enhanced refresh functionality
@@ -137,7 +163,8 @@ class EmailWarmupDashboard {
         Promise.all([
             this.loadDashboardStats(),
             this.loadCampaigns(),
-            this.loadProviders()
+            this.loadProviders(),
+            this.loadRecipients()
         ]).then(() => {
             this.showToast('Dashboard refreshed successfully!', 'success');
         }).catch(error => {
@@ -167,15 +194,500 @@ class EmailWarmupDashboard {
         document.querySelectorAll('.tab-button').forEach(button => {
             if ((tabName === 'create' && button.textContent.includes('Create')) ||
                 (tabName === 'campaigns' && button.textContent.includes('Campaigns')) ||
-                (tabName === 'analytics' && button.textContent.includes('Analytics'))) {
+                (tabName === 'analytics' && button.textContent.includes('Analytics')) ||
+                (tabName === 'recipients' && button.textContent.includes('Recipients'))) {
                 button.classList.add('active');
             }
         });
 
         if (tabName === 'analytics') {
             this.loadAnalytics();
+        } else if (tabName === 'recipients') {
+            this.loadRecipients();
         }
     }
+
+    // ===========================================
+    // RECIPIENTS MANAGEMENT FUNCTIONALITY
+    // ===========================================
+
+    async loadRecipients() {
+        try {
+            const response = await fetch('/api/recipients');
+            this.recipients = await response.json() || [];
+            this.renderRecipients(this.recipients);
+            this.updateRecipientStats();
+        } catch (error) {
+            console.error('Failed to load recipients:', error);
+            this.renderRecipients([]);
+        }
+    }
+
+    renderRecipients(recipients) {
+        const container = document.getElementById('recipients-list');
+        if (!container) return;
+
+        if (recipients.length === 0) {
+            container.innerHTML = `
+                <div class="text-center py-12 text-gray-500">
+                    <i class="fas fa-users text-4xl mb-4"></i>
+                    <p class="text-lg">No recipients yet. Add recipients to expand your email reach!</p>
+                    <button onclick="dashboard.showAddRecipientModal()" class="mt-4 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+                        Add Recipients
+                    </button>
+                </div>
+            `;
+        } else {
+            container.innerHTML = `
+                <div class="space-y-4">
+                    ${recipients.map(recipient => `
+                        <div class="border rounded-lg p-4 hover:shadow-md transition-shadow">
+                            <div class="flex justify-between items-start">
+                                <div class="flex-1">
+                                    <h4 class="font-medium text-gray-900">${recipient.name || 'Unknown'}</h4>
+                                    <p class="text-sm text-gray-600">${recipient.email}</p>
+                                    <div class="mt-2 flex items-center space-x-4">
+                                        <span class="status-badge status-${recipient.status || 'active'}">
+                                            ${(recipient.status || 'active').toUpperCase()}
+                                        </span>
+                                        <span class="text-xs text-gray-500">
+                                            ${recipient.category || 'General'} • Added ${new Date(recipient.created_at).toLocaleDateString()}
+                                        </span>
+                                    </div>
+                                </div>
+                                <div class="flex space-x-2">
+                                    <button onclick="dashboard.editRecipient(${recipient.id})" class="text-blue-600 hover:text-blue-700" title="Edit">
+                                        <i class="fas fa-edit"></i>
+                                    </button>
+                                    <button onclick="dashboard.toggleRecipientStatus(${recipient.id})" class="text-yellow-600 hover:text-yellow-700" title="Toggle Status">
+                                        <i class="fas fa-${recipient.status === 'active' ? 'pause' : 'play'}"></i>
+                                    </button>
+                                    <button onclick="dashboard.deleteRecipient(${recipient.id})" class="text-red-600 hover:text-red-700" title="Delete">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+    }
+
+    updateRecipientStats() {
+        const totalRecipients = this.recipients.length;
+        const activeRecipients = this.recipients.filter(r => r.status === 'active').length;
+        
+        // Update stats in recipients tab
+        this.updateElement('total-recipients', totalRecipients);
+        this.updateElement('active-recipients', activeRecipients);
+        this.updateElement('inactive-recipients', totalRecipients - activeRecipients);
+    }
+
+    async handleRecipientsSubmit(event) {
+        event.preventDefault();
+        
+        this.showLoading(true);
+        
+        const formData = {
+            name: document.getElementById('recipient-name').value,
+            email: document.getElementById('recipient-email').value,
+            category: document.getElementById('recipient-category').value,
+            status: document.getElementById('recipient-status').value || 'active'
+        };
+
+        try {
+            const response = await fetch('/api/recipients', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(formData)
+            });
+
+            const result = await response.json();
+            
+            if (result.success) {
+                this.showToast('Recipient added successfully!', 'success');
+                document.getElementById('recipients-form').reset();
+                this.loadRecipients();
+                this.closeModal();
+            } else {
+                this.showToast(`Failed to add recipient: ${result.message}`, 'error');
+            }
+        } catch (error) {
+            this.showToast('Error adding recipient. Please try again.', 'error');
+        } finally {
+            this.showLoading(false);
+        }
+    }
+
+    showAddRecipientModal() {
+        // Create modal if it doesn't exist
+        let modal = document.getElementById('recipient-modal');
+        if (!modal) {
+            modal = this.createRecipientModal();
+            document.body.appendChild(modal);
+        }
+        
+        const content = document.getElementById('recipient-modal-content');
+        content.innerHTML = `
+            <div class="space-y-4">
+                <div class="flex justify-between items-center">
+                    <h3 class="text-lg font-medium text-gray-900">Add New Recipient</h3>
+                    <button onclick="dashboard.closeModal()" class="text-gray-400 hover:text-gray-600">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <form id="recipient-modal-form" class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Name</label>
+                        <input type="text" id="modal-recipient-name" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Email Address</label>
+                        <input type="email" id="modal-recipient-email" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Category</label>
+                        <select id="modal-recipient-category" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                            <option value="General">General</option>
+                            <option value="Business">Business</option>
+                            <option value="Personal">Personal</option>
+                            <option value="Marketing">Marketing</option>
+                            <option value="Support">Support</option>
+                        </select>
+                    </div>
+                    <div class="flex justify-end space-x-3">
+                        <button type="button" onclick="dashboard.closeModal()" class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
+                            Cancel
+                        </button>
+                        <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700">
+                            Add Recipient
+                        </button>
+                    </div>
+                </form>
+            </div>
+        `;
+        
+        // Bind form submission
+        const form = document.getElementById('recipient-modal-form');
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            await this.submitRecipientModal();
+        });
+        
+        modal.classList.add('show');
+        modal.style.display = 'flex';
+    }
+
+    async submitRecipientModal() {
+        this.showLoading(true);
+        
+        const formData = {
+            name: document.getElementById('modal-recipient-name').value,
+            email: document.getElementById('modal-recipient-email').value,
+            category: document.getElementById('modal-recipient-category').value,
+            status: 'active'
+        };
+
+        try {
+            const response = await fetch('/api/recipients', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(formData)
+            });
+
+            const result = await response.json();
+            
+            if (result.success) {
+                this.showToast('Recipient added successfully!', 'success');
+                this.loadRecipients();
+                this.closeModal();
+            } else {
+                this.showToast(`Failed to add recipient: ${result.message}`, 'error');
+            }
+        } catch (error) {
+            this.showToast('Error adding recipient. Please try again.', 'error');
+        } finally {
+            this.showLoading(false);
+        }
+    }
+
+    showBulkImportModal() {
+        // Create modal if it doesn't exist
+        let modal = document.getElementById('bulk-import-modal');
+        if (!modal) {
+            modal = this.createBulkImportModal();
+            document.body.appendChild(modal);
+        }
+        
+        modal.classList.add('show');
+        modal.style.display = 'flex';
+    }
+
+    createBulkImportModal() {
+        const modal = document.createElement('div');
+        modal.id = 'bulk-import-modal';
+        modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+        modal.style.display = 'none';
+        modal.innerHTML = `
+            <div class="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-96 overflow-y-auto">
+                <div class="space-y-4">
+                    <div class="flex justify-between items-center">
+                        <h3 class="text-lg font-medium text-gray-900">Bulk Import Recipients</h3>
+                        <button onclick="dashboard.closeModal()" class="text-gray-400 hover:text-gray-600">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Upload CSV File</label>
+                            <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+                                <input type="file" id="csv-file-input" accept=".csv" class="hidden">
+                                <button onclick="document.getElementById('csv-file-input').click()" class="text-blue-600 hover:text-blue-700">
+                                    <i class="fas fa-upload text-2xl mb-2"></i>
+                                    <p>Click to upload CSV file</p>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="text-sm text-gray-600">
+                            <p><strong>CSV Format:</strong> name,email,category</p>
+                            <p><strong>Example:</strong></p>
+                            <code class="bg-gray-100 p-2 rounded block mt-2">
+                                John Doe,john@example.com,Business<br>
+                                Jane Smith,jane@example.com,Marketing
+                            </code>
+                        </div>
+                        <div class="flex justify-end space-x-3">
+                            <button onclick="dashboard.closeModal()" class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Close modal when clicking outside
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                this.closeModal();
+            }
+        });
+        
+        return modal;
+    }
+
+    async handleFileUpload(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        if (file.type !== 'text/csv' && !file.name.endsWith('.csv')) {
+            this.showToast('Please select a valid CSV file', 'error');
+            return;
+        }
+
+        this.showLoading(true);
+
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const response = await fetch('/api/recipients/bulk-import', {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+            
+            if (result.success) {
+                this.showToast(`Successfully imported ${result.imported_count} recipients!`, 'success');
+                this.loadRecipients();
+                this.closeModal();
+            } else {
+                this.showToast(`Import failed: ${result.message}`, 'error');
+            }
+        } catch (error) {
+            this.showToast('Error importing recipients. Please try again.', 'error');
+        } finally {
+            this.showLoading(false);
+        }
+    }
+
+    async deleteRecipient(recipientId) {
+        if (!confirm('Are you sure you want to delete this recipient?')) return;
+        
+        try {
+            const response = await fetch(`/api/recipients/${recipientId}`, {
+                method: 'DELETE'
+            });
+            const result = await response.json();
+            
+            if (result.success) {
+                this.showToast('Recipient deleted successfully!', 'success');
+                this.loadRecipients();
+            } else {
+                this.showToast('Error: ' + result.message, 'error');
+            }
+        } catch (error) {
+            this.showToast('Failed to delete recipient', 'error');
+        }
+    }
+
+    async toggleRecipientStatus(recipientId) {
+        try {
+            const response = await fetch(`/api/recipients/${recipientId}/toggle-status`, {
+                method: 'POST'
+            });
+            const result = await response.json();
+            
+            if (result.success) {
+                this.showToast(`Recipient status updated!`, 'success');
+                this.loadRecipients();
+            } else {
+                this.showToast('Error: ' + result.message, 'error');
+            }
+        } catch (error) {
+            this.showToast('Failed to update recipient status', 'error');
+        }
+    }
+
+    async editRecipient(recipientId) {
+        try {
+            const response = await fetch(`/api/recipients/${recipientId}`);
+            const recipient = await response.json();
+            
+            // Show edit modal (similar to add modal but with pre-filled data)
+            this.showEditRecipientModal(recipient);
+        } catch (error) {
+            this.showToast('Failed to load recipient details', 'error');
+        }
+    }
+
+    showEditRecipientModal(recipient) {
+        // Create modal if it doesn't exist
+        let modal = document.getElementById('recipient-modal');
+        if (!modal) {
+            modal = this.createRecipientModal();
+            document.body.appendChild(modal);
+        }
+        
+        const content = document.getElementById('recipient-modal-content');
+        content.innerHTML = `
+            <div class="space-y-4">
+                <div class="flex justify-between items-center">
+                    <h3 class="text-lg font-medium text-gray-900">Edit Recipient</h3>
+                    <button onclick="dashboard.closeModal()" class="text-gray-400 hover:text-gray-600">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <form id="recipient-modal-form" class="space-y-4">
+                    <input type="hidden" id="modal-recipient-id" value="${recipient.id}">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Name</label>
+                        <input type="text" id="modal-recipient-name" value="${recipient.name || ''}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Email Address</label>
+                        <input type="email" id="modal-recipient-email" value="${recipient.email}" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Category</label>
+                        <select id="modal-recipient-category" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                            <option value="General" ${recipient.category === 'General' ? 'selected' : ''}>General</option>
+                            <option value="Business" ${recipient.category === 'Business' ? 'selected' : ''}>Business</option>
+                            <option value="Personal" ${recipient.category === 'Personal' ? 'selected' : ''}>Personal</option>
+                            <option value="Marketing" ${recipient.category === 'Marketing' ? 'selected' : ''}>Marketing</option>
+                            <option value="Support" ${recipient.category === 'Support' ? 'selected' : ''}>Support</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Status</label>
+                        <select id="modal-recipient-status" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                            <option value="active" ${recipient.status === 'active' ? 'selected' : ''}>Active</option>
+                            <option value="inactive" ${recipient.status === 'inactive' ? 'selected' : ''}>Inactive</option>
+                        </select>
+                    </div>
+                    <div class="flex justify-end space-x-3">
+                        <button type="button" onclick="dashboard.closeModal()" class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
+                            Cancel
+                        </button>
+                        <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700">
+                            Update Recipient
+                        </button>
+                    </div>
+                </form>
+            </div>
+        `;
+        
+        // Bind form submission
+        const form = document.getElementById('recipient-modal-form');
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            await this.updateRecipientModal();
+        });
+        
+        modal.classList.add('show');
+        modal.style.display = 'flex';
+    }
+
+    async updateRecipientModal() {
+        this.showLoading(true);
+        
+        const recipientId = document.getElementById('modal-recipient-id').value;
+        const formData = {
+            name: document.getElementById('modal-recipient-name').value,
+            email: document.getElementById('modal-recipient-email').value,
+            category: document.getElementById('modal-recipient-category').value,
+            status: document.getElementById('modal-recipient-status').value
+        };
+
+        try {
+            const response = await fetch(`/api/recipients/${recipientId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(formData)
+            });
+
+            const result = await response.json();
+            
+            if (result.success) {
+                this.showToast('Recipient updated successfully!', 'success');
+                this.loadRecipients();
+                this.closeModal();
+            } else {
+                this.showToast(`Failed to update recipient: ${result.message}`, 'error');
+            }
+        } catch (error) {
+            this.showToast('Error updating recipient. Please try again.', 'error');
+        } finally {
+            this.showLoading(false);
+        }
+    }
+
+    createRecipientModal() {
+        const modal = document.createElement('div');
+        modal.id = 'recipient-modal';
+        modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+        modal.style.display = 'none';
+        modal.innerHTML = `
+            <div class="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-96 overflow-y-auto">
+                <div id="recipient-modal-content"></div>
+            </div>
+        `;
+        
+        // Close modal when clicking outside
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                this.closeModal();
+            }
+        });
+        
+        return modal;
+    }
+
+    // ===========================================
+    // EXISTING FUNCTIONALITY (UNCHANGED)
+    // ===========================================
 
     handleProviderChange(provider) {
         const helpDiv = document.getElementById('provider-help');
@@ -246,7 +758,7 @@ class EmailWarmupDashboard {
         }
     }
 
-    // Helper method to safely update elements
+// Helper method to safely update elements
     updateElement(id, value) {
         const element = document.getElementById(id);
         if (element) {
@@ -294,6 +806,12 @@ class EmailWarmupDashboard {
                                     ${campaign.provider || 'No provider'} • ${campaign.industry || 'No industry'}
                                 </span>
                             </div>
+                            <div class="mt-2">
+                                <span class="text-xs text-blue-600">
+                                    <i class="fas fa-users mr-1"></i>
+                                    ${campaign.recipient_count || 0} recipients assigned
+                                </span>
+                            </div>
                         </div>
                         <div class="flex flex-col items-end text-right">
                             <div class="text-sm text-gray-600">
@@ -311,6 +829,9 @@ class EmailWarmupDashboard {
                                         <i class="fas fa-play"></i>
                                     </button>`
                                 }
+                                <button onclick="dashboard.manageCampaignRecipients(${campaign.id})" class="text-purple-600 hover:text-purple-700" title="Manage Recipients">
+                                    <i class="fas fa-users"></i>
+                                </button>
                                 <button onclick="dashboard.viewCampaign(${campaign.id})" class="text-blue-600 hover:text-blue-700" title="View">
                                     <i class="fas fa-eye"></i>
                                 </button>
@@ -322,6 +843,197 @@ class EmailWarmupDashboard {
                     </div>
                 </div>
             `).join('');
+        }
+    }
+
+    // Campaign-Recipient Management
+    async manageCampaignRecipients(campaignId) {
+        try {
+            // Load campaign details and recipients
+            const [campaignResponse, recipientsResponse] = await Promise.all([
+                fetch(`/api/campaigns/${campaignId}`),
+                fetch('/api/recipients')
+            ]);
+            
+            const campaign = await campaignResponse.json();
+            const allRecipients = await recipientsResponse.json();
+            
+            // Load campaign's current recipients
+            const campaignRecipientsResponse = await fetch(`/api/campaigns/${campaignId}/recipients`);
+            const campaignRecipients = await campaignRecipientsResponse.json();
+            
+            this.showCampaignRecipientsModal(campaign, allRecipients, campaignRecipients);
+        } catch (error) {
+            this.showToast('Failed to load campaign recipients', 'error');
+        }
+    }
+
+    showCampaignRecipientsModal(campaign, allRecipients, campaignRecipients) {
+        // Create modal if it doesn't exist
+        let modal = document.getElementById('campaign-recipients-modal');
+        if (!modal) {
+            modal = this.createCampaignRecipientsModal();
+            document.body.appendChild(modal);
+        }
+        
+        const assignedIds = campaignRecipients.map(r => r.id);
+        
+        const content = document.getElementById('campaign-recipients-modal-content');
+        content.innerHTML = `
+            <div class="space-y-4">
+                <div class="flex justify-between items-center">
+                    <h3 class="text-lg font-medium text-gray-900">Manage Recipients - ${campaign.name}</h3>
+                    <button onclick="dashboard.closeModal()" class="text-gray-400 hover:text-gray-600">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-6">
+                    <!-- Available Recipients -->
+                    <div>
+                        <h4 class="font-medium text-gray-900 mb-3">Available Recipients (${allRecipients.filter(r => !assignedIds.includes(r.id)).length})</h4>
+                        <div class="border rounded-lg max-h-64 overflow-y-auto">
+                            ${allRecipients.filter(r => !assignedIds.includes(r.id)).map(recipient => `
+                                <div class="p-3 border-b flex justify-between items-center hover:bg-gray-50">
+                                    <div>
+                                        <p class="font-medium text-sm">${recipient.name || 'Unknown'}</p>
+                                        <p class="text-xs text-gray-600">${recipient.email}</p>
+                                        <span class="text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded">${recipient.category}</span>
+                                    </div>
+                                    <button onclick="dashboard.assignRecipientToCampaign(${campaign.id}, ${recipient.id})" 
+                                            class="text-green-600 hover:text-green-700" title="Assign">
+                                        <i class="fas fa-plus"></i>
+                                    </button>
+                                </div>
+                            `).join('') || '<p class="p-4 text-gray-500 text-center">No available recipients</p>'}
+                        </div>
+                    </div>
+                    
+                    <!-- Assigned Recipients -->
+                    <div>
+                        <h4 class="font-medium text-gray-900 mb-3">Assigned Recipients (${campaignRecipients.length})</h4>
+                        <div class="border rounded-lg max-h-64 overflow-y-auto">
+                            ${campaignRecipients.map(recipient => `
+                                <div class="p-3 border-b flex justify-between items-center hover:bg-gray-50">
+                                    <div>
+                                        <p class="font-medium text-sm">${recipient.name || 'Unknown'}</p>
+                                        <p class="text-xs text-gray-600">${recipient.email}</p>
+                                        <span class="text-xs px-2 py-1 bg-green-100 text-green-800 rounded">${recipient.category}</span>
+                                    </div>
+                                    <button onclick="dashboard.removeRecipientFromCampaign(${campaign.id}, ${recipient.id})" 
+                                            class="text-red-600 hover:text-red-700" title="Remove">
+                                        <i class="fas fa-minus"></i>
+                                    </button>
+                                </div>
+                            `).join('') || '<p class="p-4 text-gray-500 text-center">No assigned recipients</p>'}
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="flex justify-between items-center pt-4 border-t">
+                    <button onclick="dashboard.assignAllRecipients(${campaign.id})" 
+                            class="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700">
+                        Assign All Active Recipients
+                    </button>
+                    <button onclick="dashboard.closeModal()" 
+                            class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
+                        Done
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        modal.classList.add('show');
+        modal.style.display = 'flex';
+    }
+
+    createCampaignRecipientsModal() {
+        const modal = document.createElement('div');
+        modal.id = 'campaign-recipients-modal';
+        modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+        modal.style.display = 'none';
+        modal.innerHTML = `
+            <div class="bg-white rounded-lg p-6 max-w-4xl w-full mx-4 max-h-96 overflow-y-auto">
+                <div id="campaign-recipients-modal-content"></div>
+            </div>
+        `;
+        
+        // Close modal when clicking outside
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                this.closeModal();
+            }
+        });
+        
+        return modal;
+    }
+
+    async assignRecipientToCampaign(campaignId, recipientId) {
+        try {
+            const response = await fetch(`/api/campaigns/${campaignId}/recipients`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ recipient_id: recipientId })
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                this.showToast('Recipient assigned successfully!', 'success');
+                // Refresh the modal
+                this.manageCampaignRecipients(campaignId);
+                this.loadCampaigns(); // Refresh campaigns list
+            } else {
+                this.showToast('Error: ' + result.message, 'error');
+            }
+        } catch (error) {
+            this.showToast('Failed to assign recipient', 'error');
+        }
+    }
+
+    async removeRecipientFromCampaign(campaignId, recipientId) {
+        if (!confirm('Remove this recipient from the campaign?')) return;
+        
+        try {
+            const response = await fetch(`/api/campaigns/${campaignId}/recipients/${recipientId}`, {
+                method: 'DELETE'
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                this.showToast('Recipient removed successfully!', 'success');
+                // Refresh the modal
+                this.manageCampaignRecipients(campaignId);
+                this.loadCampaigns(); // Refresh campaigns list
+            } else {
+                this.showToast('Error: ' + result.message, 'error');
+            }
+        } catch (error) {
+            this.showToast('Failed to remove recipient', 'error');
+        }
+    }
+
+    async assignAllRecipients(campaignId) {
+        if (!confirm('Assign all active recipients to this campaign?')) return;
+        
+        try {
+            const response = await fetch(`/api/campaigns/${campaignId}/recipients/assign-all`, {
+                method: 'POST'
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                this.showToast(`Successfully assigned ${result.count} recipients!`, 'success');
+                // Refresh the modal
+                this.manageCampaignRecipients(campaignId);
+                this.loadCampaigns(); // Refresh campaigns list
+            } else {
+                this.showToast('Error: ' + result.message, 'error');
+            }
+        } catch (error) {
+            this.showToast('Failed to assign recipients', 'error');
         }
     }
 
@@ -483,6 +1195,10 @@ class EmailWarmupDashboard {
                             <h4 class="font-medium text-gray-900">Success Rate</h4>
                             <p class="text-sm text-gray-600">${campaign.success_rate || 0}%</p>
                         </div>
+                        <div>
+                            <h4 class="font-medium text-gray-900">Recipients</h4>
+                            <p class="text-sm text-gray-600">${campaign.recipient_count || 0} assigned</p>
+                        </div>
                     </div>
                 </div>
             `;
@@ -587,6 +1303,7 @@ class EmailWarmupDashboard {
                                 <h3 class="text-lg font-bold">Progress</h3>
                                 <p>Campaign Progress: ${stats.progress}%</p>
                                 <p>Daily Target: ${stats.daily_target}</p>
+                                <p>Total Recipients: ${stats.total_recipients || 0}</p>
                             </div>
                         </div>
                     </div>
@@ -684,11 +1401,21 @@ class EmailWarmupDashboard {
     }
 
     closeModal() {
-        const modal = document.getElementById('campaign-modal');
-        if (modal) {
-            modal.classList.remove('show');
-            modal.style.display = 'none';
-        }
+        // Close all possible modals
+        const modals = [
+            'campaign-modal',
+            'recipient-modal', 
+            'bulk-import-modal',
+            'campaign-recipients-modal'
+        ];
+        
+        modals.forEach(modalId => {
+            const modal = document.getElementById(modalId);
+            if (modal) {
+                modal.classList.remove('show');
+                modal.style.display = 'none';
+            }
+        });
     }
 }
 
@@ -739,5 +1466,5 @@ document.addEventListener('DOMContentLoaded', function() {
     // Set global reference for base.html
     window.handleLogout = () => dashboard.handleLogout();
     
-    console.log('Dashboard initialized successfully with enhanced user menu functionality');
+    console.log('Dashboard initialized successfully with Recipients Management functionality');
 });
