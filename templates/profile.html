@@ -17,69 +17,51 @@
                     <div class="px-6 py-4 border-b border-gray-200">
                         <h3 class="text-lg font-medium text-gray-900">Personal Information</h3>
                     </div>
-                    <form method="POST" class="p-6 space-y-6">
-                     <!-- {{ form.hidden_tag() }} -->
-                        
+                    <div class="p-6 space-y-6">
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div>
-                                <label for="username" class="block text-sm font-medium text-gray-700 mb-2">Username</label>
-                                {{ form.username(class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500") }}
-                                {% if form.username.errors %}
-                                    <div class="text-red-500 text-sm mt-1">
-                                        {% for error in form.username.errors %}
-                                            <p>{{ error }}</p>
-                                        {% endfor %}
-                                    </div>
-                                {% endif %}
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Username</label>
+                                <input type="text" value="{{ current_user.username }}" readonly 
+                                       class="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 cursor-not-allowed">
+                                <p class="text-sm text-gray-500 mt-1">Contact support to change username</p>
                             </div>
                             
                             <div>
-                                <label for="email" class="block text-sm font-medium text-gray-700 mb-2">Email Address</label>
-                                {{ form.email(class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500") }}
-                                {% if form.email.errors %}
-                                    <div class="text-red-500 text-sm mt-1">
-                                        {% for error in form.email.errors %}
-                                            <p>{{ error }}</p>
-                                        {% endfor %}
-                                    </div>
-                                {% endif %}
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Email Address</label>
+                                <input type="email" value="{{ current_user.email }}" readonly
+                                       class="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 cursor-not-allowed">
+                                <p class="text-sm text-gray-500 mt-1">Contact support to change email</p>
                             </div>
                         </div>
-
-                        <div class="flex justify-end">
-                            {{ form.submit(class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500") }}
+                        
+                        <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                            <div class="flex items-center">
+                                <i class="fas fa-info-circle text-blue-600 mr-2"></i>
+                                <p class="text-sm text-blue-800">Profile editing functionality will be available in a future update.</p>
+                            </div>
                         </div>
-                    </form>
+                    </div>
                 </div>
 
-                <!-- Change Password -->
+                <!-- Password Change Notice -->
                 <div class="bg-white shadow-lg rounded-lg card-shadow mt-8">
                     <div class="px-6 py-4 border-b border-gray-200">
-                        <h3 class="text-lg font-medium text-gray-900">Change Password</h3>
+                        <h3 class="text-lg font-medium text-gray-900">Security</h3>
                     </div>
-                    <form method="POST" action="{{ url_for('change_password') }}" class="p-6 space-y-6">
-                        {{ password_form.hidden_tag() }}
-                        
-                        <div>
-                            <label for="current_password" class="block text-sm font-medium text-gray-700 mb-2">Current Password</label>
-                            {{ password_form.current_password(class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500") }}
+                    <div class="p-6">
+                        <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                            <div class="flex items-center">
+                                <i class="fas fa-shield-alt text-yellow-600 mr-2"></i>
+                                <div>
+                                    <h4 class="text-sm font-medium text-yellow-800">Password Management</h4>
+                                    <p class="text-sm text-yellow-700 mt-1">For security reasons, password changes must be done through the forgot password flow.</p>
+                                    <a href="/forgot-password" class="text-sm font-medium text-yellow-800 hover:text-yellow-900 mt-2 inline-block">
+                                        Reset Password →
+                                    </a>
+                                </div>
+                            </div>
                         </div>
-                        
-                        <div>
-                            <label for="new_password" class="block text-sm font-medium text-gray-700 mb-2">New Password</label>
-                            {{ password_form.new_password(class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500") }}
-                            <p class="text-sm text-gray-500 mt-1">Password must be at least 8 characters long</p>
-                        </div>
-                        
-                        <div>
-                            <label for="confirm_password" class="block text-sm font-medium text-gray-700 mb-2">Confirm New Password</label>
-                            {{ password_form.confirm_password(class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500") }}
-                        </div>
-
-                        <div class="flex justify-end">
-                            {{ password_form.submit(class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500") }}
-                        </div>
-                    </form>
+                    </div>
                 </div>
             </div>
 
@@ -93,12 +75,19 @@
                             <div>
                                 <dt class="text-sm font-medium text-gray-500">Account Type</dt>
                                 <dd class="text-sm text-gray-900">
-                                    {% if current_user.is_demo %}
+                                    {% if current_user.is_demo() %}
                                     <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                        <i class="fas fa-flask mr-1"></i>
                                         Demo Account
+                                    </span>
+                                    {% elif current_user.is_admin() %}
+                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                                        <i class="fas fa-crown mr-1"></i>
+                                        Admin Account
                                     </span>
                                     {% else %}
                                     <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                        <i class="fas fa-user mr-1"></i>
                                         Full Account
                                     </span>
                                     {% endif %}
@@ -107,49 +96,120 @@
                             
                             <div>
                                 <dt class="text-sm font-medium text-gray-500">Member Since</dt>
-                                <dd class="text-sm text-gray-900">{{ current_user.created_at.strftime('%B %d, %Y') }}</dd>
+                                <dd class="text-sm text-gray-900">{{ current_user.created_at.strftime('%B %d, %Y') if current_user.created_at else 'Unknown' }}</dd>
                             </div>
                             
                             <div>
-                                <dt class="text-sm font-medium text-gray-500">Total Campaigns</dt>
-                                <dd class="text-sm text-gray-900">{{ user_stats.total_campaigns }}</dd>
+                                <dt class="text-sm font-medium text-gray-500">Last Login</dt>
+                                <dd class="text-sm text-gray-900">{{ current_user.last_login.strftime('%B %d, %Y at %I:%M %p') if current_user.last_login else 'Never' }}</dd>
                             </div>
                             
                             <div>
-                                <dt class="text-sm font-medium text-gray-500">Emails Sent</dt>
-                                <dd class="text-sm text-gray-900">{{ user_stats.total_emails_sent }}</dd>
+                                <dt class="text-sm font-medium text-gray-500">Account Status</dt>
+                                <dd class="text-sm text-gray-900">
+                                    {% if current_user.is_active %}
+                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                        <i class="fas fa-check-circle mr-1"></i>
+                                        Active
+                                    </span>
+                                    {% else %}
+                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                                        <i class="fas fa-times-circle mr-1"></i>
+                                        Inactive
+                                    </span>
+                                    {% endif %}
+                                </dd>
                             </div>
                         </dl>
                     </div>
                 </div>
 
-                {% if current_user.is_demo %}
+                {% if current_user.is_demo() %}
                 <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
                     <div class="flex items-center mb-3">
                         <i class="fas fa-info-circle text-yellow-600 mr-2"></i>
                         <h4 class="text-sm font-medium text-yellow-800">Demo Account Limitations</h4>
                     </div>
                     <ul class="text-sm text-yellow-700 space-y-1">
-                        <li>• Maximum 2 campaigns</li>
-                        <li>• 7-day access period</li>
+                        <li>• Maximum 1 campaign</li>
                         <li>• Limited daily email volume</li>
+                        <li>• Simulated email sending</li>
+                        <li>• Demo data only</li>
                     </ul>
                     <div class="mt-4">
-                        <a href="{{ url_for('upgrade') }}" class="text-sm font-medium text-yellow-800 hover:text-yellow-900">
-                            Upgrade to full account →
-                        </a>
+                        <p class="text-sm text-yellow-700">
+                            Contact support to upgrade to a full account with unlimited features.
+                        </p>
                     </div>
                 </div>
                 {% endif %}
 
+                <!-- Quick Stats -->
+                <div class="bg-white shadow-lg rounded-lg card-shadow">
+                    <div class="p-6">
+                        <h3 class="text-lg font-medium text-gray-900 mb-4">Quick Stats</h3>
+                        
+                        <div class="space-y-4">
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm font-medium text-gray-500">
+                                    <i class="fas fa-paper-plane text-blue-500 mr-2"></i>
+                                    Total Campaigns
+                                </span>
+                                <span class="text-sm font-bold text-gray-900" id="profile-total-campaigns">--</span>
+                            </div>
+                            
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm font-medium text-gray-500">
+                                    <i class="fas fa-users text-green-500 mr-2"></i>
+                                    Total Recipients
+                                </span>
+                                <span class="text-sm font-bold text-gray-900" id="profile-total-recipients">--</span>
+                            </div>
+                            
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm font-medium text-gray-500">
+                                    <i class="fas fa-envelope text-purple-500 mr-2"></i>
+                                    Emails Sent
+                                </span>
+                                <span class="text-sm font-bold text-gray-900" id="profile-emails-sent">--</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Account Actions -->
+                <div class="bg-white shadow-lg rounded-lg card-shadow">
+                    <div class="p-6">
+                        <h3 class="text-lg font-medium text-gray-900 mb-4">Account Actions</h3>
+                        
+                        <div class="space-y-3">
+                            <a href="/forgot-password" 
+                               class="w-full inline-flex items-center justify-center px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <i class="fas fa-key mr-2"></i>
+                                Change Password
+                            </a>
+                            
+                            <button onclick="downloadAccountData()" 
+                                    class="w-full inline-flex items-center justify-center px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <i class="fas fa-download mr-2"></i>
+                                Export Data
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Danger Zone -->
                 <div class="bg-red-50 border border-red-200 rounded-lg p-6">
-                    <h4 class="text-sm font-medium text-red-800 mb-3">Danger Zone</h4>
+                    <h4 class="text-sm font-medium text-red-800 mb-3">
+                        <i class="fas fa-exclamation-triangle mr-2"></i>
+                        Danger Zone
+                    </h4>
                     <p class="text-sm text-red-700 mb-4">
                         Once you delete your account, there is no going back. Please be certain.
                     </p>
                     <button onclick="confirmDeleteAccount()" 
-                            class="px-4 py-2 bg-red-600 text-white text-sm rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500">
+                            class="px-4 py-2 bg-red-600 text-white text-sm rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 transition-colors">
+                        <i class="fas fa-trash mr-2"></i>
                         Delete Account
                     </button>
                 </div>
@@ -161,30 +221,95 @@
 
 {% block scripts %}
 <script>
+// Load user stats on page load
+document.addEventListener('DOMContentLoaded', function() {
+    loadUserStats();
+});
+
+async function loadUserStats() {
+    try {
+        const response = await fetch('/api/dashboard-stats');
+        const data = await response.json();
+        
+        document.getElementById('profile-total-campaigns').textContent = data.total_campaigns || 0;
+        document.getElementById('profile-total-recipients').textContent = data.total_recipients || 0;
+        document.getElementById('profile-emails-sent').textContent = data.emails_sent || 0;
+    } catch (error) {
+        console.error('Failed to load user stats:', error);
+        document.getElementById('profile-total-campaigns').textContent = '0';
+        document.getElementById('profile-total-recipients').textContent = '0';
+        document.getElementById('profile-emails-sent').textContent = '0';
+    }
+}
+
+function downloadAccountData() {
+    // Create a simple account data export
+    const accountData = {
+        username: '{{ current_user.username }}',
+        email: '{{ current_user.email }}',
+        account_type: '{{ current_user.role }}',
+        member_since: '{{ current_user.created_at.strftime("%Y-%m-%d") if current_user.created_at else "Unknown" }}',
+        last_login: '{{ current_user.last_login.strftime("%Y-%m-%d %H:%M:%S") if current_user.last_login else "Never" }}',
+        export_date: new Date().toISOString()
+    };
+    
+    const dataStr = JSON.stringify(accountData, null, 2);
+    const dataBlob = new Blob([dataStr], {type: 'application/json'});
+    const url = URL.createObjectURL(dataBlob);
+    
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'account_data_{{ current_user.username }}.json';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+}
+
 function confirmDeleteAccount() {
-    if (confirm('Are you sure you want to delete your account? This action cannot be undone and will delete all your campaigns and data.')) {
-        if (confirm('This is your final warning. Type "DELETE" to confirm account deletion.')) {
-            const confirmation = prompt('Type "DELETE" to confirm:');
-            if (confirmation === 'DELETE') {
-                fetch('/api/delete-account', {
-                    method: 'DELETE',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': '{{ csrf_token() }}'
-                    }
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        alert('Account deleted successfully. You will be redirected to the homepage.');
-                        window.location.href = '/';
-                    } else {
-                        alert('Error deleting account: ' + data.message);
-                    }
-                });
-            }
+    if (confirm('⚠️ WARNING: Are you sure you want to delete your account?\n\nThis action will permanently delete:\n• All your campaigns\n• All your recipients\n• All your email logs\n• Your account data\n\nThis action CANNOT be undone!')) {
+        const confirmation = prompt('⚠️ FINAL WARNING ⚠️\n\nTo confirm account deletion, type "DELETE MY ACCOUNT" exactly:');
+        if (confirmation === 'DELETE MY ACCOUNT') {
+            deleteAccount();
+        } else if (confirmation !== null) {
+            alert('Account deletion cancelled - text did not match exactly.');
         }
     }
+}
+
+async function deleteAccount() {
+    try {
+        const response = await fetch('/api/auth/delete-account', {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            alert('✅ Account deleted successfully. You will be redirected to the homepage.');
+            window.location.href = '/';
+        } else {
+            alert('❌ Error deleting account: ' + (data.message || 'Unknown error'));
+        }
+    } catch (error) {
+        console.error('Account deletion error:', error);
+        alert('❌ Error deleting account. Please contact support.');
+    }
+}
+
+// Show loading toast
+function showToast(message, type = 'info') {
+    const toast = document.createElement('div');
+    toast.className = `fixed top-4 right-4 z-50 px-4 py-2 rounded-lg shadow-lg text-white ${type === 'success' ? 'bg-green-500' : type === 'error' ? 'bg-red-500' : 'bg-blue-500'}`;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    
+    setTimeout(() => {
+        toast.remove();
+    }, 3000);
 }
 </script>
 {% endblock %}
