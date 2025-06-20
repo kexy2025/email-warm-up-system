@@ -20,36 +20,26 @@
             </p>
         </div>
         
-        <form class="mt-8 space-y-6" method="POST">
-            {{ form.hidden_tag() }}
+        <form class="mt-8 space-y-6" id="login-form">
             <div class="rounded-md shadow-sm -space-y-px">
                 <div>
                     <label for="email" class="sr-only">Email address</label>
-                    {{ form.email(class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm", placeholder="Email address") }}
-                    {% if form.email.errors %}
-                        <div class="text-red-500 text-sm mt-1">
-                            {% for error in form.email.errors %}
-                                <p>{{ error }}</p>
-                            {% endfor %}
-                        </div>
-                    {% endif %}
+                    <input id="email" name="email" type="email" required 
+                           class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm" 
+                           placeholder="Email address">
                 </div>
                 <div>
                     <label for="password" class="sr-only">Password</label>
-                    {{ form.password(class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm", placeholder="Password") }}
-                    {% if form.password.errors %}
-                        <div class="text-red-500 text-sm mt-1">
-                            {% for error in form.password.errors %}
-                                <p>{{ error }}</p>
-                            {% endfor %}
-                        </div>
-                    {% endif %}
+                    <input id="password" name="password" type="password" required 
+                           class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm" 
+                           placeholder="Password">
                 </div>
             </div>
 
             <div class="flex items-center justify-between">
                 <div class="flex items-center">
-                    {{ form.remember_me(class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded") }}
+                    <input id="remember_me" name="remember_me" type="checkbox" 
+                           class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
                     <label for="remember_me" class="ml-2 block text-sm text-gray-900">
                         Remember me
                     </label>
@@ -63,7 +53,13 @@
             </div>
 
             <div>
-                {{ form.submit(class="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors duration-200") }}
+                <button type="submit" 
+                        class="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors duration-200">
+                    <span class="absolute left-0 inset-y-0 flex items-center pl-3">
+                        <i class="fas fa-sign-in-alt group-hover:text-blue-400" aria-hidden="true"></i>
+                    </span>
+                    Sign in
+                </button>
             </div>
 
             <div class="text-center">
@@ -78,13 +74,165 @@
             </div>
 
             <div>
-                <a href="{{ url_for('demo_login') }}" 
-                   class="group relative w-full flex justify-center py-2 px-4 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors duration-200">
-                    <i class="fas fa-play mr-2"></i>
+                <button type="button" onclick="demoLogin()" 
+                        class="group relative w-full flex justify-center py-2 px-4 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors duration-200">
+                    <span class="absolute left-0 inset-y-0 flex items-center pl-3">
+                        <i class="fas fa-play group-hover:text-gray-500" aria-hidden="true"></i>
+                    </span>
                     Try Demo Account
-                </a>
+                </button>
             </div>
         </form>
+
+        <!-- Message display area -->
+        <div id="message" class="mt-4"></div>
+        
+        <!-- Loading indicator -->
+        <div id="loading" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div class="bg-white rounded-lg p-6 flex items-center space-x-3">
+                <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                <span class="text-gray-700">Signing in...</span>
+            </div>
+        </div>
     </div>
 </div>
+
+<script>
+// Login form submission
+document.getElementById('login-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+    const remember = document.getElementById('remember_me').checked;
+    
+    if (!email || !password) {
+        showMessage('Please fill in all fields', 'error');
+        return;
+    }
+    
+    showLoading(true);
+    clearMessage();
+    
+    try {
+        const response = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                email: email,
+                password: password,
+                remember: remember
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showMessage('Login successful! Redirecting...', 'success');
+            setTimeout(() => {
+                window.location.href = data.redirect_url || '/dashboard';
+            }, 1000);
+        } else {
+            showMessage(data.message || 'Login failed', 'error');
+        }
+    } catch (error) {
+        console.error('Login error:', error);
+        showMessage('Login failed. Please try again.', 'error');
+    } finally {
+        showLoading(false);
+    }
+});
+
+// Demo login function
+async function demoLogin() {
+    showLoading(true);
+    clearMessage();
+    
+    try {
+        const response = await fetch('/api/auth/demo-login', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showMessage('Demo login successful! Redirecting...', 'success');
+            setTimeout(() => {
+                window.location.href = data.redirect_url || '/dashboard';
+            }, 1000);
+        } else {
+            showMessage(data.message || 'Demo login failed', 'error');
+        }
+    } catch (error) {
+        console.error('Demo login error:', error);
+        showMessage('Demo login failed. Please try again.', 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+// Utility functions
+function showMessage(message, type) {
+    const messageDiv = document.getElementById('message');
+    const colors = {
+        success: 'bg-green-100 text-green-800 border-green-200',
+        error: 'bg-red-100 text-red-800 border-red-200',
+        warning: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+        info: 'bg-blue-100 text-blue-800 border-blue-200'
+    };
+    
+    const icons = {
+        success: 'check-circle',
+        error: 'exclamation-triangle',
+        warning: 'exclamation-circle',
+        info: 'info-circle'
+    };
+    
+    messageDiv.innerHTML = `
+        <div class="border rounded-lg p-4 ${colors[type] || colors.info}">
+            <div class="flex items-center">
+                <i class="fas fa-${icons[type] || icons.info} mr-2"></i>
+                <span>${message}</span>
+            </div>
+        </div>
+    `;
+    
+    // Auto-hide success messages
+    if (type === 'success') {
+        setTimeout(() => {
+            clearMessage();
+        }, 3000);
+    }
+}
+
+function clearMessage() {
+    document.getElementById('message').innerHTML = '';
+}
+
+function showLoading(show) {
+    const loadingDiv = document.getElementById('loading');
+    if (show) {
+        loadingDiv.classList.remove('hidden');
+    } else {
+        loadingDiv.classList.add('hidden');
+    }
+}
+
+// Enter key support
+document.addEventListener('keypress', function(e) {
+    if (e.key === 'Enter' && (e.target.id === 'email' || e.target.id === 'password')) {
+        document.getElementById('login-form').dispatchEvent(new Event('submit'));
+    }
+});
+
+// Auto-focus email field
+document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('email').focus();
+});
+</script>
 {% endblock %}
