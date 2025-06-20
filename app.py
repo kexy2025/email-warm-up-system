@@ -1523,7 +1523,9 @@ def manage_recipients():
                         Recipient.name.ilike(f'%{search}%')
                     )
                 )
-            
+
+
+
             if category_filter:
                 query = query.filter_by(category=category_filter)
             
@@ -1555,6 +1557,43 @@ def manage_recipients():
         except Exception as e:
             logger.error(f"Error fetching recipients: {str(e)}")
             return jsonify({'error': 'Failed to fetch recipients'}), 500
+
+except Exception as e:
+            logger.error(f"Error fetching recipients: {str(e)}")
+            return jsonify({'error': 'Failed to fetch recipients'}), 500
+    
+    elif request.method == 'POST':
+        # ... POST method code ...
+
+@app.route('/api/recipients/stats')
+@login_required
+def recipient_stats():
+    """Get recipient statistics"""
+    try:
+        if current_user.is_admin():
+            total_recipients = Recipient.query.count() + WarmupRecipient.query.count()
+            active_recipients = Recipient.query.filter_by(status='active').count() + WarmupRecipient.query.filter_by(is_active=True).count()
+        else:
+            total_recipients = Recipient.query.filter_by(user_id=current_user.id).count()
+            active_recipients = Recipient.query.filter_by(user_id=current_user.id, status='active').count()
+        
+        return jsonify({
+            'total_recipients': total_recipients,
+            'active_recipients': active_recipients,
+            'inactive_recipients': total_recipients - active_recipients,
+            'recently_emailed': 0,
+            'average_success_rate': 0
+        })
+        
+    except Exception as e:
+        logger.error(f"Recipient stats error: {str(e)}")
+        return jsonify({
+            'total_recipients': 0,
+            'active_recipients': 0,
+            'inactive_recipients': 0,
+            'recently_emailed': 0,
+            'average_success_rate': 0
+        })
     
     elif request.method == 'POST':
         try:
