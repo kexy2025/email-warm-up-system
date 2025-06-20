@@ -1,89 +1,116 @@
 {% extends "base.html" %}
 
-{% block title %}Register - Email Warmup System{% endblock %}
+{% block title %}Register - Email Warmup{% endblock %}
 
 {% block content %}
-<div class="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+<div class="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
     <div class="max-w-md w-full space-y-8">
         <div>
-            <div class="mx-auto h-12 w-12 flex items-center justify-center rounded-full bg-green-100">
-                <i class="fas fa-user-plus text-green-600 text-xl"></i>
-            </div>
             <h2 class="mt-6 text-center text-3xl font-extrabold text-gray-900">
                 Create your account
             </h2>
             <p class="mt-2 text-center text-sm text-gray-600">
                 Or
                 <a href="{{ url_for('login') }}" class="font-medium text-blue-600 hover:text-blue-500">
-                    sign in to existing account
+                    sign in to your existing account
                 </a>
             </p>
         </div>
-        
-        <form class="mt-8 space-y-6" method="POST">
-            {{ form.hidden_tag() }}
-            <div class="space-y-4">
+        <form class="mt-8 space-y-6" id="register-form">
+            <div class="rounded-md shadow-sm -space-y-px">
                 <div>
-                    <label for="username" class="block text-sm font-medium text-gray-700">Username</label>
-                    {{ form.username(class="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm", placeholder="Choose a username") }}
-                    {% if form.username.errors %}
-                        <div class="text-red-500 text-sm mt-1">
-                            {% for error in form.username.errors %}
-                                <p>{{ error }}</p>
-                            {% endfor %}
-                        </div>
-                    {% endif %}
+                    <label for="username" class="sr-only">Username</label>
+                    <input id="username" name="username" type="text" required 
+                           class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm" 
+                           placeholder="Username">
                 </div>
-                
                 <div>
-                    <label for="email" class="block text-sm font-medium text-gray-700">Email address</label>
-                    {{ form.email(class="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm", placeholder="Enter your email") }}
-                    {% if form.email.errors %}
-                        <div class="text-red-500 text-sm mt-1">
-                            {% for error in form.email.errors %}
-                                <p>{{ error }}</p>
-                            {% endfor %}
-                        </div>
-                    {% endif %}
+                    <label for="email" class="sr-only">Email address</label>
+                    <input id="email" name="email" type="email" required 
+                           class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm" 
+                           placeholder="Email address">
                 </div>
-                
                 <div>
-                    <label for="password" class="block text-sm font-medium text-gray-700">Password</label>
-                    {{ form.password(class="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm", placeholder="Create a password") }}
-                    {% if form.password.errors %}
-                        <div class="text-red-500 text-sm mt-1">
-                            {% for error in form.password.errors %}
-                                <p>{{ error }}</p>
-                            {% endfor %}
-                        </div>
-                    {% endif %}
-                    <p class="mt-1 text-sm text-gray-500">Password must be at least 8 characters long</p>
-                </div>
-                
-                <div>
-                    <label for="confirm_password" class="block text-sm font-medium text-gray-700">Confirm Password</label>
-                    {{ form.confirm_password(class="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm", placeholder="Confirm your password") }}
-                    {% if form.confirm_password.errors %}
-                        <div class="text-red-500 text-sm mt-1">
-                            {% for error in form.confirm_password.errors %}
-                                <p>{{ error }}</p>
-                            {% endfor %}
-                        </div>
-                    {% endif %}
+                    <label for="password" class="sr-only">Password</label>
+                    <input id="password" name="password" type="password" required 
+                           class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm" 
+                           placeholder="Password">
                 </div>
             </div>
 
             <div>
-                {{ form.submit(class="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors duration-200") }}
+                <button type="submit" 
+                        class="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                    Create Account
+                </button>
             </div>
 
-            <div class="text-center text-xs text-gray-500">
-                By creating an account, you agree to our
-                <a href="#" class="text-blue-600 hover:text-blue-500">Terms of Service</a>
-                and
-                <a href="#" class="text-blue-600 hover:text-blue-500">Privacy Policy</a>
+            <div>
+                <button type="button" onclick="demoLogin()" 
+                        class="group relative w-full flex justify-center py-2 px-4 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                    Try Demo Account
+                </button>
             </div>
         </form>
+
+        <div id="message" class="mt-4"></div>
     </div>
 </div>
+
+<script>
+document.getElementById('register-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const formData = {
+        username: document.getElementById('username').value,
+        email: document.getElementById('email').value,
+        password: document.getElementById('password').value
+    };
+    
+    try {
+        const response = await fetch('/api/auth/register', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(formData)
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            window.location.href = data.redirect_url;
+        } else {
+            document.getElementById('message').innerHTML = 
+                `<div class="text-red-600 text-sm">${data.message}</div>`;
+        }
+    } catch (error) {
+        document.getElementById('message').innerHTML = 
+            `<div class="text-red-600 text-sm">Registration failed. Please try again.</div>`;
+    }
+});
+
+async function demoLogin() {
+    try {
+        const response = await fetch('/api/auth/demo-login', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            window.location.href = data.redirect_url;
+        } else {
+            document.getElementById('message').innerHTML = 
+                `<div class="text-red-600 text-sm">${data.message}</div>`;
+        }
+    } catch (error) {
+        document.getElementById('message').innerHTML = 
+            `<div class="text-red-600 text-sm">Demo login failed. Please try again.</div>`;
+    }
+}
+</script>
 {% endblock %}
