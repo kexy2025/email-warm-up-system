@@ -1532,8 +1532,6 @@ def validate_smtp():
         if 'amazon_ses' in provider and not username.startswith('AKIA'):
             return jsonify({'success': False, 'message': 'Amazon SES username should start with AKIA'}), 400
 
-Looking at your code, I can see it cuts off at the SMTP validation function. Here's the continuation from where it left off:
-
 # Real SMTP connection test (skip for demo users)
         if current_user.is_demo():
             return jsonify({
