@@ -2079,14 +2079,30 @@ def campaign_detail(campaign_id):
             db.session.commit()
             return jsonify({'success': True, 'message': 'Campaign updated', 'campaign': campaign.to_dict()})
 
-        elif request.method == 'DELETE':
+ elif request.method == 'DELETE':
             # Demo users cannot delete campaigns
             if current_user.is_demo():
                 return jsonify({'error': 'Demo accounts cannot delete campaigns'}), 403
+            
+            try:
+                campaign_id = campaign.id
+                campaign_name = campaign.name
                 
-            db.session.delete(campaign)
-            db.session.commit()
-            return jsonify({'success': True, 'message': 'Campaign deleted'})
+                # Manually delete related records first to avoid foreign key constraints
+                EmailLog.query.filter_by(campaign_id=campaign_id).delete()
+                CampaignRecipient.query.filter_by(campaign_id=campaign_id).delete()
+                
+                # Now delete the campaign
+                db.session.delete(campaign)
+                db.session.commit()
+                
+                logger.info(f"Campaign '{campaign_name}' (ID: {campaign_id}) deleted successfully by user {current_user.username}")
+                return jsonify({'success': True, 'message': f'Campaign "{campaign_name}" deleted successfully'})
+                
+            except Exception as e:
+                db.session.rollback()
+                logger.error(f"Campaign deletion error: {str(e)}")
+                return jsonify({'success': False, 'message': f'Failed to delete campaign: {str(e)}'}), 500
 
     except Exception as e:
         logger.error(f"Campaign detail error: {str(e)}")
