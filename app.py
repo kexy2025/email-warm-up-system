@@ -1527,7 +1527,7 @@ def validate_smtp():
         if 'amazon_ses' in provider and not username.startswith('AKIA'):
             return jsonify({'success': False, 'message': 'Amazon SES username should start with AKIA'}), 400
 
-    Copy        # Real SMTP connection test (skip for demo users)
+# Real SMTP connection test (skip for demo users)
         if current_user.is_demo():
             return jsonify({'success': True, 'message': 'SMTP validation successful (demo mode)'})
         
