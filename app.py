@@ -747,7 +747,7 @@ def process_warmup_campaigns():
                             
                             logger.info(f"📨 Email to {recipient['email']}: {'✅' if success else '❌'}")
 
-# Delay between emails (shorter for demo accounts)
+Copy                            # Delay between emails (shorter for demo accounts)
                             delay = random.uniform(5, 10) if user.is_demo() else random.uniform(30, 60)
                             time.sleep(delay)
                         
@@ -856,12 +856,17 @@ def index():
 def dashboard():
     return render_template('dashboard.html')
 
-# *** MISSING ROUTE ADDED HERE ***
 @app.route('/create-campaign')
 @login_required
 def create_campaign():
     """Campaign creation form page"""
     return render_template('create-campaign.html', providers=SMTP_PROVIDERS)
+
+@app.route('/campaigns')
+@login_required
+def campaigns_page():
+    """Campaigns list page"""
+    return render_template('campaigns.html')
 
 @app.route('/health')
 def health_check():
@@ -1527,125 +1532,324 @@ def validate_smtp():
         if 'amazon_ses' in provider and not username.startswith('AKIA'):
             return jsonify({'success': False, 'message': 'Amazon SES username should start with AKIA'}), 400
 
-# Real SMTP connection test (skip for demo users)
+Looking at your code, I can see it cuts off at the SMTP validation function. Here's the continuation from where it left off:
+
+Copy        # Real SMTP connection test (skip for demo users)
         if current_user.is_demo():
-            return jsonify({'success': True, 'message': 'SMTP validation successful (demo mode)'})
+            return jsonify({
+                'success': True, 
+                'message': 'Demo validation successful',
+                'provider_info': SMTP_PROVIDERS[provider]
+            })
+        
+        # Test actual SMTP connection for non-demo users
+        smtp_config = SMTP_PROVIDERS[provider]
         
         try:
-            smtp_config = SMTP_PROVIDERS[provider]
+            logger.info(f"Testing SMTP connection to {smtp_config['host']}:{smtp_config['port']}")
+            
             server = smtplib.SMTP(smtp_config['host'], smtp_config['port'])
             server.starttls()
             server.login(username, password)
             server.quit()
             
-            return jsonify({'success': True, 'message': 'SMTP connection validated successfully'})
+            logger.info(f"SMTP validation successful for {provider}")
+            return jsonify({
+                'success': True,
+                'message': 'SMTP configuration validated successfully',
+                'provider_info': smtp_config
+            })
             
         except smtplib.SMTPAuthenticationError:
-            return jsonify({'success': False, 'message': 'Authentication failed. Check your credentials.'}), 400
+            logger.error(f"SMTP Authentication failed for {provider}")
+            return jsonify({
+                'success': False,
+                'message': 'Authentication failed. Please check your username and password.',
+                'help_text': smtp_config.get('help_text', '')
+            }), 400
+            
+        except smtplib.SMTPServerDisconnected:
+            logger.error(f"SMTP Server disconnected for {provider}")
+            return jsonify({
+                'success': False,
+                'message': 'Connection to SMTP server failed. Please try again.',
+                'help_text': smtp_config.get('help_text', '')
+            }), 400
+            
         except Exception as e:
-            return jsonify({'success': False, 'message': f'Connection failed: {str(e)}'}), 400
-
+            logger.error(f"SMTP validation error: {str(e)}")
+            return jsonify({
+                'success': False,
+                'message': f'SMTP configuration test failed: {str(e)}',
+                'help_text': smtp_config.get('help_text', '')
+            }), 400
+            
     except Exception as e:
         logger.error(f"SMTP validation error: {str(e)}")
         return jsonify({'success': False, 'message': 'Validation failed'}), 500
 
-@app.route('/api/providers')
-def get_providers():
-    return jsonify({
-        'providers': {
-            key: {
-                'name': config['name'],
-                'help_text': config['help_text'],
-                'requires_custom_host': False
+@app.route('/api/email-logs/<int:campaign_id>')
+@login_required
+def get_email_logs(campaign_id):
+    """Get email logs for a specific campaign"""
+    try:
+        campaign = db.session.get(Campaign, campaign_id)
+        if not campaign:
+            return jsonify({'error': 'Campaign not found'}), 404
+        
+        # Check ownership
+        if not current_user.is_admin() and campaign.user_id != current_user.id:
+            return jsonify({'error': 'Access denied'}), 403
+        
+        # Pagination
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 50, type=int)
+        
+        logs = EmailLog.query.filter_by(campaign_id=campaign_id)\
+                           .order_by(EmailLog.sent_at.desc())\
+                           .paginate(page=page, per_page=per_page, error_out=False)
+        
+        log_data = []
+        for log in logs.items:
+            log_data.append({
+                'id': log.id,
+                'recipient': log.recipient,
+                'subject': log.subject,
+                'status': log.status,
+                'error_message': log.error_message,
+                'sent_at': log.sent_at.isoformat() if log.sent_at else None
+            })
+        
+        return jsonify({
+            'logs': log_data,
+            'pagination': {
+                'page': logs.page,
+                'pages': logs.pages,
+                'per_page': logs.per_page,
+                'total': logs.total,
+                'has_next': logs.has_next,
+                'has_prev': logs.has_prev
             }
-            for key, config in SMTP_PROVIDERS.items()
-        }
-    })
+        })
+        
+    except Exception as e:
+        logger.error(f"Error fetching email logs: {str(e)}")
+        return jsonify({'error': 'Failed to fetch email logs'}), 500
+
+@app.route('/api/providers')
+@login_required
+def get_providers():
+    """Get available SMTP providers"""
+    return jsonify(SMTP_PROVIDERS)
+
+@app.route('/api/test-email', methods=['POST'])
+@login_required
+def send_test_email():
+    """Send a test email to verify SMTP configuration"""
+    try:
+        if current_user.is_demo():
+            return jsonify({
+                'success': False, 
+                'message': 'Demo accounts cannot send test emails'
+            }), 403
+        
+        data = request.get_json()
+        campaign_id = data.get('campaign_id')
+        test_email = data.get('test_email', current_user.email)
+        
+        if not campaign_id:
+            return jsonify({'success': False, 'message': 'Campaign ID required'}), 400
+        
+        campaign = db.session.get(Campaign, campaign_id)
+        if not campaign:
+            return jsonify({'success': False, 'message': 'Campaign not found'}), 404
+        
+        # Check ownership
+        if campaign.user_id != current_user.id and not current_user.is_admin():
+            return jsonify({'error': 'Access denied'}), 403
+        
+        # Send test email
+        subject = f"Test Email from {campaign.name}"
+        body = f"""
+        Hello,
+        
+        This is a test email from your KEXY Email Warmup campaign: {campaign.name}
+        
+        If you receive this email, your SMTP configuration is working correctly.
+        
+        Campaign Details:
+        - Provider: {SMTP_PROVIDERS[campaign.provider]['name']}
+        - Email: {campaign.email}
+        - Industry: {campaign.industry}
+        
+        Best regards,
+        KEXY Email Warmup Team
+        """
+        
+        success = send_smtp_email(campaign, test_email, subject, body)
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'message': f'Test email sent successfully to {test_email}'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'Failed to send test email. Please check your SMTP configuration.'
+            }), 400
+            
+    except Exception as e:
+        logger.error(f"Test email error: {str(e)}")
+        return jsonify({'success': False, 'message': 'Test email failed'}), 500
+
+@app.route('/api/admin/users')
+@admin_required
+def admin_get_users():
+    """Admin endpoint to get all users"""
+    try:
+        users = User.query.all()
+        return jsonify([user.to_dict() for user in users])
+    except Exception as e:
+        logger.error(f"Admin users error: {str(e)}")
+        return jsonify({'error': 'Failed to fetch users'}), 500
+
+@app.route('/api/admin/users/<int:user_id>/toggle-status', methods=['POST'])
+@admin_required
+def admin_toggle_user_status(user_id):
+    """Admin endpoint to toggle user active status"""
+    try:
+        user = db.session.get(User, user_id)
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+        
+        user.is_active = not user.is_active
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': f'User {user.username} {"activated" if user.is_active else "deactivated"}',
+            'user': user.to_dict()
+        })
+        
+    except Exception as e:
+        logger.error(f"Admin toggle user error: {str(e)}")
+        return jsonify({'error': 'Failed to toggle user status'}), 500
+
+@app.route('/api/admin/system-stats')
+@admin_required
+def admin_system_stats():
+    """Admin endpoint for system statistics"""
+    try:
+        total_users = User.query.count()
+        active_users = User.query.filter_by(is_active=True).count()
+        demo_users = User.query.filter_by(role='demo').count()
+        
+        total_campaigns = Campaign.query.count()
+        active_campaigns = Campaign.query.filter_by(status='active').count()
+        
+        total_emails = EmailLog.query.count()
+        successful_emails = EmailLog.query.filter_by(status='sent').count()
+        
+        # Recent activity
+        recent_logins = LoginAttempt.query.filter_by(success=True)\
+                                         .order_by(LoginAttempt.timestamp.desc())\
+                                         .limit(10).all()
+        
+        recent_campaigns = Campaign.query.order_by(Campaign.created_at.desc())\
+                                        .limit(5).all()
+        
+        return jsonify({
+            'users': {
+                'total': total_users,
+                'active': active_users,
+                'demo': demo_users
+            },
+            'campaigns': {
+                'total': total_campaigns,
+                'active': active_campaigns
+            },
+            'emails': {
+                'total': total_emails,
+                'successful': successful_emails,
+                'success_rate': round((successful_emails / total_emails * 100) if total_emails > 0 else 0, 1)
+            },
+            'recent_activity': {
+                'logins': [{'email': l.email, 'timestamp': l.timestamp.isoformat()} for l in recent_logins],
+                'campaigns': [{'name': c.name, 'user_id': c.user_id, 'created_at': c.created_at.isoformat()} for c in recent_campaigns]
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Admin system stats error: {str(e)}")
+        return jsonify({'error': 'Failed to fetch system stats'}), 500
 
 # Error Handlers
 @app.errorhandler(404)
 def not_found(error):
-    return jsonify({'error': 'Not found'}), 404
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'Not found'}), 404
+    return render_template('404.html'), 404
 
 @app.errorhandler(500)
 def internal_error(error):
-    logger.error(f"Internal error: {str(error)}")
-    return jsonify({'error': 'Internal server error'}), 500
+    db.session.rollback()
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'Internal server error'}), 500
+    return render_template('500.html'), 500
 
-@app.errorhandler(Exception)
-def handle_exception(e):
-    logger.error(f"Unhandled exception: {str(e)}")
-    return jsonify({'error': 'An unexpected error occurred'}), 500
+@app.errorhandler(403)
+def forbidden(error):
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'Access forbidden'}), 403
+    return render_template('403.html'), 403
 
-# Enhanced Database initialization with Authentication
-def init_db():
-    with app.app_context():
-        try:
-            # Create all tables
+# Database Initialization
+def create_tables():
+    """Create database tables with error handling"""
+    try:
+        with app.app_context():
             db.create_all()
+            logger.info("✅ Database tables created successfully")
             
-            # Check database type
-            db_url = os.environ.get('DATABASE_URL', '').strip()
-            is_postgresql = db_url and not db_url.startswith('sqlite')
-            
-            # Create default admin user if doesn't exist
-            admin_user = User.query.filter_by(role='admin').first()
-            if not admin_user:
-                admin_user = User(
-                    username='admin',
-                    email='admin@kexy.com',
-                    password_hash=generate_password_hash('admin123'),
-                    role='admin',
-                    email_verified=True,
-                    is_active=True
-                )
-                db.session.add(admin_user)
-                db.session.commit()
-                logger.info("✅ Default admin user created (admin@kexy.com / admin123)")
-            
-            # Create demo user
+            # Create demo user if it doesn't exist
             create_demo_user()
-            
-            if is_postgresql:
-                logger.info("🚀 PostgreSQL database initialized successfully - ENTERPRISE READY!")
-                logger.info("📊 Automatic migration completed - Your data is now enterprise-grade")
-                logger.info("🔐 Authentication system enabled - Multi-user support active")
-            else:
-                logger.info("✅ SQLite database initialized successfully")
-                logger.info("🔐 Authentication system enabled")
             
             logger.info("🔧 Database initialization completed")
             
-        except Exception as e:
-            logger.error(f"❌ Database initialization failed: {str(e)}")
-            raise
+    except Exception as e:
+        logger.error(f"❌ Database initialization failed: {str(e)}")
+        raise
 
+# Application Startup
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 8080))
-    
-    # Initialize database with migration support
-    init_db()
-    
-    # Start background scheduler (with safe fallbacks)
-    start_warmup_scheduler()
-    
-    logger.info("🚀 Starting KEXY Email Warmup System - Enhanced Authentication Version")
-    logger.info(f"📧 Running on port {port}")
-    logger.info("🔧 All features enabled: Authentication, SMTP validation, scheduling, analytics, PostgreSQL migration")
-    logger.info("👤 Default accounts: admin@kexy.com (admin123) | demo user available")
-    
-    # Show scheduler status
-    if SCHEDULE_AVAILABLE:
-        logger.info("📅 Schedule module: ✅ Available")
-    else:
-        logger.info("📅 Schedule module: ❌ Not available")
+    try:
+        print("🚀 Initializing KEXY Email Warmup application...")
         
-    if APSCHEDULER_AVAILABLE:
-        logger.info("⏰ APScheduler: ✅ Available")
-    else:
-        logger.info("⏰ APScheduler: ❌ Not available")
-    
-    if not SCHEDULE_AVAILABLE and not APSCHEDULER_AVAILABLE:
-        logger.info("🔄 Using fallback timer-based scheduling")
-    
-    app.run(host='0.0.0.0', port=port, debug=False)
+        # Create database tables
+        create_tables()
+        
+        # Start background scheduler
+        start_warmup_scheduler()
+        
+        # Get port from environment
+        port = int(os.environ.get('PORT', 5000))
+        
+        print(f"🌟 KEXY Email Warmup starting on port {port}")
+        print("🔧 Features enabled:")
+        print(f"   • Scheduling: {'✅' if SCHEDULE_AVAILABLE or APSCHEDULER_AVAILABLE else '❌'}")
+        print(f"   • Email sending: ✅")
+        print(f"   • User authentication: ✅")
+        print(f"   • Admin panel: ✅")
+        
+        # Run the application
+        app.run(
+            host='0.0.0.0',
+            port=port,
+            debug=os.environ.get('FLASK_ENV') == 'development'
+        )
+        
+    except Exception as e:
+        logger.error(f"❌ Application startup failed: {str(e)}")
+        print(f"💥 Startup Error: {str(e)}")
+        raise
