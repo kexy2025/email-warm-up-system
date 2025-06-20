@@ -118,6 +118,26 @@ login_manager.login_view = 'login'
 login_manager.login_message = 'Please log in to access this page.'
 login_manager.login_message_category = 'info'
 
+# AUTO-CREATE DATABASE TABLES ON STARTUP (Railway-friendly)
+def init_database():
+    """Initialize database tables and demo data"""
+    try:
+        with app.app_context():
+            # Create all tables
+            db.create_all()
+            logger.info("✅ Database tables created successfully")
+            
+            # Create demo user if it doesn't exist
+            create_demo_user()
+            
+            # Create initial recipients
+            create_initial_recipients()
+            
+            logger.info("✅ Database initialization complete")
+            
+    except Exception as e:
+        logger.error(f"❌ Database initialization failed: {str(e)}")
+
 # Initialize scheduler if available
 scheduler = None
 if APSCHEDULER_AVAILABLE:
@@ -707,7 +727,6 @@ def get_warmup_recipients(count=10, industry_filter=None, exclude_recently_email
                 'industry': r.industry,
                 'responds': r.responds
             })
-
 # If we don't have enough recipients, fall back to the hardcoded list
         if len(recipient_list) < count:
             logger.warning(f"Only found {len(recipient_list)} recipients in database, falling back to hardcoded list")
@@ -2249,7 +2268,7 @@ def get_email_logs(campaign_id):
         if not current_user.is_admin() and campaign.user_id != current_user.id:
             return jsonify({'error': 'Access denied'}), 403
 
-# Pagination
+        # Pagination
         page = request.args.get('page', 1, type=int)
         per_page = request.args.get('per_page', 50, type=int)
         
@@ -2571,7 +2590,7 @@ def handle_unexpected_error(error):
         </html>
         ''', 500
 
-# Database Initialization
+# Database Initialization (REMOVED from here - will be called later)
 def create_tables():
     """Create database tables with error handling"""
     try:
@@ -2596,8 +2615,8 @@ if __name__ == '__main__':
     try:
         print("🚀 Initializing KEXY Email Warmup application...")
         
-        # Create database tables
-        create_tables()
+        # Call initialization on startup (AUTO-MIGRATION)
+        init_database()
         
         # Start background scheduler
         start_warmup_scheduler()
@@ -2613,6 +2632,7 @@ if __name__ == '__main__':
         print(f"   • Admin panel: ✅")
         print(f"   • Database-driven recipients: ✅")
         print(f"   • User-specific recipients: ✅")
+        print(f"   • Auto-migration: ✅")
         
         # Check recipient count
         try:
