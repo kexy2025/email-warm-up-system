@@ -423,6 +423,15 @@ def demo_restricted(f):
         return f(*args, **kwargs)
     return decorated_function
 
+# Template Helper Functions
+def template_exists(template_name):
+    """Check if a template file exists"""
+    try:
+        app.jinja_env.get_template(template_name)
+        return True
+    except:
+        return False
+
 # Authentication Helper Functions
 def generate_reset_token():
     return secrets.token_urlsafe(32)
@@ -747,7 +756,7 @@ def process_warmup_campaigns():
                             
                             logger.info(f"📨 Email to {recipient['email']}: {'✅' if success else '❌'}")
 
-# Delay between emails (shorter for demo accounts)
+                    # Delay between emails (shorter for demo accounts)
                             delay = random.uniform(5, 10) if user.is_demo() else random.uniform(30, 60)
                             time.sleep(delay)
                         
@@ -819,6 +828,12 @@ def login():
     if current_user.is_authenticated:
         return redirect(url_for('dashboard'))
     return render_template('login.html')
+
+@app.route('/register')
+def register():
+    if current_user.is_authenticated:
+        return redirect(url_for('dashboard'))
+    return render_template('register.html')
 
 @app.route('/forgot-password')
 def forgot_password():
@@ -1782,25 +1797,135 @@ def admin_system_stats():
         logger.error(f"Admin system stats error: {str(e)}")
         return jsonify({'error': 'Failed to fetch system stats'}), 500
 
-# Error Handlers
+# Enhanced Error Handlers with template fallbacks
 @app.errorhandler(404)
 def not_found(error):
+    """Handle 404 errors with proper template fallback"""
     if request.path.startswith('/api/'):
         return jsonify({'error': 'Not found'}), 404
-    return render_template('404.html'), 404
+    
+    try:
+        return render_template('404.html'), 404
+    except Exception as template_error:
+        logger.error(f"404 template error: {str(template_error)}")
+        # Fallback HTML response if template is missing
+        return '''
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Page Not Found</title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 40px; text-align: center; }
+                h1 { color: #dc3545; }
+                a { color: #007bff; text-decoration: none; }
+                a:hover { text-decoration: underline; }
+            </style>
+        </head>
+        <body>
+            <h1>404 - Page Not Found</h1>
+            <p>The page you're looking for doesn't exist.</p>
+            <a href="/">Go Home</a>
+        </body>
+        </html>
+        ''', 404
 
 @app.errorhandler(500)
 def internal_error(error):
+    """Handle 500 errors with proper template fallback"""
     db.session.rollback()
+    logger.error(f"Internal server error: {str(error)}")
+    
     if request.path.startswith('/api/'):
         return jsonify({'error': 'Internal server error'}), 500
-    return render_template('500.html'), 500
+    
+    try:
+        return render_template('500.html'), 500
+    except Exception as template_error:
+        logger.error(f"500 template error: {str(template_error)}")
+        # Fallback HTML response if template is missing
+        return '''
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Server Error</title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 40px; text-align: center; }
+                h1 { color: #dc3545; }
+                a { color: #007bff; text-decoration: none; }
+                a:hover { text-decoration: underline; }
+            </style>
+        </head>
+        <body>
+            <h1>500 - Server Error</h1>
+            <p>Something went wrong on our end. Please try again later.</p>
+            <a href="/">Go Home</a>
+        </body>
+        </html>
+        ''', 500
 
 @app.errorhandler(403)
 def forbidden(error):
+    """Handle 403 errors with proper template fallback"""
     if request.path.startswith('/api/'):
         return jsonify({'error': 'Access forbidden'}), 403
-    return render_template('403.html'), 403
+    
+    try:
+        return render_template('403.html'), 403
+    except Exception as template_error:
+        logger.error(f"403 template error: {str(template_error)}")
+        # Fallback HTML response if template is missing
+        return '''
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Access Forbidden</title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 40px; text-align: center; }
+                h1 { color: #dc3545; }
+                a { color: #007bff; text-decoration: none; }
+                a:hover { text-decoration: underline; }
+            </style>
+        </head>
+        <body>
+            <h1>403 - Access Forbidden</h1>
+            <p>You don't have permission to access this resource.</p>
+            <a href="/">Go Home</a>
+        </body>
+        </html>
+        ''', 403
+
+@app.errorhandler(Exception)
+def handle_unexpected_error(error):
+    """Handle any unexpected errors"""
+    db.session.rollback()
+    logger.error(f"Unexpected error: {str(error)}", exc_info=True)
+    
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'An unexpected error occurred'}), 500
+    
+    try:
+        return render_template('500.html'), 500
+    except Exception as template_error:
+        logger.error(f"Template error in unexpected handler: {str(template_error)}")
+        return '''
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Error</title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 40px; text-align: center; }
+                h1 { color: #dc3545; }
+                a { color: #007bff; text-decoration: none; }
+                a:hover { text-decoration: underline; }
+            </style>
+        </head>
+        <body>
+            <h1>An Error Occurred</h1>
+            <p>Something unexpected happened. Please try again later.</p>
+            <a href="/">Go Home</a>
+        </body>
+        </html>
+        ''', 500
 
 # Database Initialization
 def create_tables():
