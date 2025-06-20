@@ -37,6 +37,24 @@
         .status-error {
             background: linear-gradient(45deg, #ef4444, #f87171);
         }
+        .status-created {
+            background: linear-gradient(45deg, #6b7280, #9ca3af);
+        }
+        
+        /* Navigation active state */
+        .nav-active {
+            border-bottom-color: #3b82f6 !important;
+            color: #3b82f6 !important;
+        }
+        
+        /* Mobile menu styles */
+        .mobile-menu {
+            transform: translateX(-100%);
+            transition: transform 0.3s ease-in-out;
+        }
+        .mobile-menu.open {
+            transform: translateX(0);
+        }
     </style>
     
     {% block head %}{% endblock %}
@@ -50,26 +68,58 @@
             <div class="flex justify-between h-16">
                 <div class="flex items-center">
                     <div class="flex-shrink-0">
-                        <h1 class="text-2xl font-bold text-gray-900">
-                            <i class="fas fa-envelope-open text-blue-600 mr-2"></i>
-                            Email Warmup
-                        </h1>
+                        <a href="{{ url_for('dashboard') }}" class="flex items-center">
+                            <h1 class="text-2xl font-bold text-gray-900">
+                                <i class="fas fa-envelope-open text-blue-600 mr-2"></i>
+                                Email Warmup
+                            </h1>
+                        </a>
                     </div>
+                    
+                    <!-- Desktop Navigation -->
                     <div class="hidden md:ml-6 md:flex md:space-x-8">
                         <a href="{{ url_for('dashboard') }}" 
-                           class="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-colors duration-200">
+                           class="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-colors duration-200"
+                           data-nav="dashboard">
                             <i class="fas fa-tachometer-alt mr-2"></i>
                             Dashboard
                         </a>
-                        <a href="/campaigns" 
-                           class="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-colors duration-200">
+                        <a href="{{ url_for('campaigns_page') }}" 
+                           class="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-colors duration-200"
+                           data-nav="campaigns">
                             <i class="fas fa-paper-plane mr-2"></i>
                             Campaigns
                         </a>
+                        <a href="{{ url_for('recipients_page') }}" 
+                           class="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-colors duration-200"
+                           data-nav="recipients">
+                            <i class="fas fa-users mr-2"></i>
+                            Recipients
+                        </a>
+                        {% if current_user.is_admin() %}
+                        <a href="{{ url_for('create_campaign') }}" 
+                           class="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-colors duration-200"
+                           data-nav="create">
+                            <i class="fas fa-plus mr-2"></i>
+                            Create
+                        </a>
+                        {% endif %}
                     </div>
                 </div>
                 
                 <div class="flex items-center space-x-4">
+                    <!-- Mobile menu button -->
+                    <button type="button" class="md:hidden bg-white p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500" id="mobile-menu-button">
+                        <span class="sr-only">Open main menu</span>
+                        <i class="fas fa-bars"></i>
+                    </button>
+                    
+                    <!-- Notifications (placeholder for future) -->
+                    <button type="button" class="bg-white p-1 rounded-full text-gray-400 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                        <span class="sr-only">View notifications</span>
+                        <i class="fas fa-bell h-6 w-6"></i>
+                    </button>
+                    
                     <!-- User Menu -->
                     <div class="relative">
                         <button type="button" class="bg-white rounded-full flex text-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500" id="user-menu-button">
@@ -81,29 +131,85 @@
                             </div>
                         </button>
                         
-                        <div class="hidden origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5" id="user-menu">
+                        <div class="hidden origin-top-right absolute right-0 mt-2 w-56 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-50" id="user-menu">
                             <div class="py-1">
-                                <div class="px-4 py-2 text-sm text-gray-700 border-b">
+                                <div class="px-4 py-3 text-sm text-gray-700 border-b border-gray-100">
                                     <div class="font-medium">{{ current_user.username }}</div>
-                                    <div class="text-gray-500">{{ current_user.email }}</div>
-                                    {% if current_user.is_demo %}
-                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 mt-1">
-                                        Demo Account
-                                    </span>
-                                    {% endif %}
+                                    <div class="text-gray-500 truncate">{{ current_user.email }}</div>
+                                    <div class="flex items-center mt-2">
+                                        {% if current_user.is_demo() %}
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                            <i class="fas fa-flask mr-1"></i>
+                                            Demo Account
+                                        </span>
+                                        {% elif current_user.is_admin() %}
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                                            <i class="fas fa-crown mr-1"></i>
+                                            Admin
+                                        </span>
+                                        {% else %}
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                            <i class="fas fa-user mr-1"></i>
+                                            User
+                                        </span>
+                                        {% endif %}
+                                    </div>
                                 </div>
-                                <a href="/profile" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                                    <i class="fas fa-user mr-2"></i>Profile
+                                
+                                <a href="{{ url_for('profile') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors duration-150">
+                                    <i class="fas fa-user mr-3 text-gray-400"></i>Profile Settings
                                 </a>
-                                <a href="/debug/env" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                                    <i class="fas fa-bug mr-2"></i>Debug Info
+                                
+                                {% if current_user.is_admin() %}
+                                <a href="/debug/env" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors duration-150">
+                                    <i class="fas fa-bug mr-3 text-gray-400"></i>Debug Info
                                 </a>
-                                <a href="#" onclick="handleLogout()" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 cursor-pointer">
-                                    <i class="fas fa-sign-out-alt mr-2"></i>Logout
+                                <a href="/health" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors duration-150">
+                                    <i class="fas fa-heartbeat mr-3 text-gray-400"></i>System Health
+                                </a>
+                                {% endif %}
+                                
+                                <div class="border-t border-gray-100"></div>
+                                
+                                <a href="#" onclick="handleLogout()" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 cursor-pointer transition-colors duration-150">
+                                    <i class="fas fa-sign-out-alt mr-3 text-gray-400"></i>Sign Out
                                 </a>
                             </div>
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Mobile menu -->
+        <div class="md:hidden fixed inset-0 z-50 hidden" id="mobile-menu">
+            <div class="fixed inset-0 bg-black bg-opacity-25" id="mobile-menu-overlay"></div>
+            <div class="mobile-menu fixed top-0 left-0 bottom-0 w-full max-w-sm bg-white shadow-xl">
+                <div class="flex items-center justify-between px-4 pt-4 pb-6 border-b">
+                    <h2 class="text-lg font-medium text-gray-900">Menu</h2>
+                    <button type="button" class="text-gray-400 hover:text-gray-500" id="mobile-menu-close">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="px-4 py-6 space-y-1">
+                    <a href="{{ url_for('dashboard') }}" 
+                       class="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50">
+                        <i class="fas fa-tachometer-alt mr-3"></i>Dashboard
+                    </a>
+                    <a href="{{ url_for('campaigns_page') }}" 
+                       class="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50">
+                        <i class="fas fa-paper-plane mr-3"></i>Campaigns
+                    </a>
+                    <a href="{{ url_for('recipients_page') }}" 
+                       class="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50">
+                        <i class="fas fa-users mr-3"></i>Recipients
+                    </a>
+                    {% if current_user.is_admin() %}
+                    <a href="{{ url_for('create_campaign') }}" 
+                       class="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50">
+                        <i class="fas fa-plus mr-3"></i>Create Campaign
+                    </a>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -147,15 +253,18 @@
         <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
             <div class="flex justify-between items-center">
                 <div class="text-gray-500 text-sm">
-                    © 2024 Email Warmup System. Built for better deliverability.
+                    © 2024 KEXY Email Warmup System. Built for better deliverability.
                 </div>
                 <div class="flex space-x-4">
-                    <a href="#" class="text-gray-400 hover:text-gray-500">
+                    <a href="https://github.com/kexy2025/email-warm-up-system" target="_blank" class="text-gray-400 hover:text-gray-500">
                         <i class="fab fa-github"></i>
                     </a>
                     <a href="#" class="text-gray-400 hover:text-gray-500">
                         <i class="fab fa-twitter"></i>
                     </a>
+                    <div class="text-gray-400 text-xs">
+                        v3.1.0 - Recipients System
+                    </div>
                 </div>
             </div>
         </div>
@@ -164,7 +273,9 @@
     <!-- Scripts -->
     <script>
         // User menu toggle
-        document.getElementById('user-menu-button')?.addEventListener('click', function() {
+        document.getElementById('user-menu-button')?.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
             const menu = document.getElementById('user-menu');
             menu.classList.toggle('hidden');
         });
@@ -178,28 +289,123 @@
             }
         });
 
-        // Handle logout properly
+        // Mobile menu functionality
+        const mobileMenuButton = document.getElementById('mobile-menu-button');
+        const mobileMenu = document.getElementById('mobile-menu');
+        const mobileMenuClose = document.getElementById('mobile-menu-close');
+        const mobileMenuOverlay = document.getElementById('mobile-menu-overlay');
+
+        function openMobileMenu() {
+            mobileMenu.classList.remove('hidden');
+            setTimeout(() => {
+                mobileMenu.querySelector('.mobile-menu').classList.add('open');
+            }, 10);
+        }
+
+        function closeMobileMenu() {
+            mobileMenu.querySelector('.mobile-menu').classList.remove('open');
+            setTimeout(() => {
+                mobileMenu.classList.add('hidden');
+            }, 300);
+        }
+
+        mobileMenuButton?.addEventListener('click', openMobileMenu);
+        mobileMenuClose?.addEventListener('click', closeMobileMenu);
+        mobileMenuOverlay?.addEventListener('click', closeMobileMenu);
+
+        // Active navigation highlighting
+        function highlightActiveNav() {
+            const currentPath = window.location.pathname;
+            const navLinks = document.querySelectorAll('[data-nav]');
+            
+            navLinks.forEach(link => {
+                link.classList.remove('nav-active');
+                const href = link.getAttribute('href');
+                
+                // Check if current path matches or starts with the link href
+                if (currentPath === href || (href !== '/' && currentPath.startsWith(href))) {
+                    link.classList.add('nav-active');
+                }
+            });
+        }
+
+        // Enhanced logout functionality
         function handleLogout() {
+            if (!confirm('Are you sure you want to sign out?')) {
+                return;
+            }
+
+            // Show loading state
+            const logoutLink = document.querySelector('[onclick="handleLogout()"]');
+            if (logoutLink) {
+                logoutLink.innerHTML = '<i class="fas fa-spinner fa-spin mr-3 text-gray-400"></i>Signing out...';
+                logoutLink.style.pointerEvents = 'none';
+            }
+
             fetch('/api/auth/logout', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                }
+                },
+                credentials: 'same-origin'
             })
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    window.location.href = '/login';
+                    // Show success message briefly
+                    showToast('Signed out successfully', 'success');
+                    setTimeout(() => {
+                        window.location.href = data.redirect_url || '/login';
+                    }, 500);
                 } else {
-                    // Fallback: redirect anyway
-                    window.location.href = '/login';
+                    throw new Error(data.message || 'Logout failed');
                 }
             })
             .catch(error => {
                 console.error('Logout error:', error);
+                showToast('Logout failed, redirecting anyway...', 'warning');
                 // Fallback: redirect anyway
-                window.location.href = '/login';
+                setTimeout(() => {
+                    window.location.href = '/login';
+                }, 1000);
             });
+        }
+
+        // Toast notification function
+        function showToast(message, type = 'info') {
+            const toastContainer = document.createElement('div');
+            toastContainer.className = 'fixed top-4 right-4 z-50';
+            
+            const colors = {
+                success: 'bg-green-500',
+                error: 'bg-red-500',
+                warning: 'bg-yellow-500',
+                info: 'bg-blue-500'
+            };
+            
+            toastContainer.innerHTML = `
+                <div class="${colors[type]} text-white px-4 py-2 rounded-lg shadow-lg transform translate-x-full transition-transform duration-300">
+                    <div class="flex items-center">
+                        <i class="fas fa-${type === 'success' ? 'check' : type === 'error' ? 'times' : type === 'warning' ? 'exclamation' : 'info'} mr-2"></i>
+                        <span>${message}</span>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(toastContainer);
+            
+            // Animate in
+            setTimeout(() => {
+                toastContainer.querySelector('div').classList.remove('translate-x-full');
+            }, 100);
+            
+            // Remove after 3 seconds
+            setTimeout(() => {
+                toastContainer.querySelector('div').classList.add('translate-x-full');
+                setTimeout(() => {
+                    document.body.removeChild(toastContainer);
+                }, 300);
+            }, 3000);
         }
 
         // Auto-hide flash messages
@@ -211,6 +417,12 @@
                 setTimeout(() => alert.remove(), 500);
             });
         }, 5000);
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            highlightActiveNav();
+            console.log('Navigation initialized successfully');
+        });
     </script>
     
     {% block scripts %}{% endblock %}
