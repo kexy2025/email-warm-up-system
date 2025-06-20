@@ -747,7 +747,7 @@ def process_warmup_campaigns():
                             
                             logger.info(f"📨 Email to {recipient['email']}: {'✅' if success else '❌'}")
 
-Copy                            # Delay between emails (shorter for demo accounts)
+# Delay between emails (shorter for demo accounts)
                             delay = random.uniform(5, 10) if user.is_demo() else random.uniform(30, 60)
                             time.sleep(delay)
                         
@@ -1534,7 +1534,7 @@ def validate_smtp():
 
 Looking at your code, I can see it cuts off at the SMTP validation function. Here's the continuation from where it left off:
 
-Copy        # Real SMTP connection test (skip for demo users)
+# Real SMTP connection test (skip for demo users)
         if current_user.is_demo():
             return jsonify({
                 'success': True, 
