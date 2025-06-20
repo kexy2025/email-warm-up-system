@@ -41,9 +41,10 @@ function loadCampaigns() {
     fetch('/api/campaigns')
         .then(response => response.json())
         .then(campaigns => {
+            console.log('API Response:', campaigns); // Debug log
             const container = document.getElementById('campaigns-container');
             
-            if (campaigns.length === 0) {
+            if (!campaigns || campaigns.length === 0) {
                 container.innerHTML = `
                     <div class="px-6 py-8 text-center">
                         <i class="fas fa-paper-plane text-gray-400 text-4xl mb-4"></i>
@@ -61,6 +62,8 @@ function loadCampaigns() {
             let html = '<div class="divide-y divide-gray-200">';
             
             campaigns.forEach(campaign => {
+                console.log('Campaign data:', campaign); // Debug log
+                
                 const statusColors = {
                     'active': 'bg-green-100 text-green-800',
                     'paused': 'bg-yellow-100 text-yellow-800',
@@ -68,28 +71,34 @@ function loadCampaigns() {
                     'stopped': 'bg-red-100 text-red-800'
                 };
                 
+                // Ensure we have valid numbers
+                const emailsSent = campaign.emails_sent || 0;
+                const successRate = campaign.success_rate || 0;
+                const dailyVolume = campaign.daily_volume || 0;
+                const warmupDays = campaign.warmup_days || 0;
+                
                 html += `
                     <div class="px-6 py-4">
                         <div class="flex items-center justify-between">
                             <div class="flex-1">
                                 <div class="flex items-center">
-                                    <h4 class="text-lg font-medium text-gray-900">${campaign.name}</h4>
+                                    <h4 class="text-lg font-medium text-gray-900">${campaign.name || 'Unnamed Campaign'}</h4>
                                     <span class="ml-3 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusColors[campaign.status] || 'bg-gray-100 text-gray-800'}">
-                                        ${campaign.status.charAt(0).toUpperCase() + campaign.status.slice(1)}
+                                        ${campaign.status ? campaign.status.charAt(0).toUpperCase() + campaign.status.slice(1) : 'Unknown'}
                                     </span>
                                 </div>
                                 <div class="mt-2 flex items-center text-sm text-gray-500">
                                     <i class="fas fa-envelope mr-1"></i>
-                                    <span class="mr-4">${campaign.email}</span>
+                                    <span class="mr-4">${campaign.email || 'No email'}</span>
                                     <i class="fas fa-industry mr-1"></i>
                                     <span class="mr-4">${campaign.industry || 'Business'}</span>
                                     <i class="fas fa-calendar mr-1"></i>
-                                    <span>${campaign.daily_volume} emails/day</span>
+                                    <span>${dailyVolume} emails/day</span>
                                 </div>
                                 <div class="mt-2 flex items-center text-sm text-gray-500">
-                                    <span class="mr-4">📨 ${campaign.emails_sent} sent</span>
-                                    <span class="mr-4">✅ ${campaign.success_rate}% success</span>
-                                    <span>📅 ${campaign.warmup_days} days</span>
+                                    <span class="mr-4">📨 ${emailsSent} sent</span>
+                                    <span class="mr-4">✅ ${successRate}% success</span>
+                                    <span>📅 ${warmupDays} days</span>
                                 </div>
                             </div>
                             <div class="flex items-center space-x-2">
@@ -104,7 +113,7 @@ function loadCampaigns() {
                                 <button onclick="viewCampaign(${campaign.id})" class="inline-flex items-center px-3 py-1 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
                                     <i class="fas fa-eye mr-1"></i> View
                                 </button>
-                                <button onclick="deleteCampaign(${campaign.id}, '${campaign.name}')" class="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-red-700 bg-red-100 hover:bg-red-200">
+                                <button onclick="deleteCampaign(${campaign.id}, '${(campaign.name || 'Unnamed Campaign').replace(/'/g, "\\'")}'); event.stopPropagation();" class="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-red-700 bg-red-100 hover:bg-red-200">
                                     <i class="fas fa-trash mr-1"></i> Delete
                                 </button>
                             </div>
@@ -121,7 +130,7 @@ function loadCampaigns() {
             document.getElementById('campaigns-container').innerHTML = `
                 <div class="px-6 py-4 text-center">
                     <i class="fas fa-exclamation-triangle text-red-400 text-xl"></i>
-                    <p class="text-red-500 mt-2">Error loading campaigns</p>
+                    <p class="text-red-500 mt-2">Error loading campaigns: ${error.message}</p>
                 </div>
             `;
         });
@@ -129,60 +138,85 @@ function loadCampaigns() {
 
 // Campaign actions
 function startCampaign(id) {
+    console.log('Starting campaign:', id);
     fetch(`/api/campaigns/${id}/start`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'}
     })
     .then(response => response.json())
     .then(data => {
+        console.log('Start response:', data);
         if (data.success) {
             loadCampaigns(); // Reload the list
         } else {
-            alert('Error: ' + data.message);
+            alert('Error: ' + (data.message || 'Failed to start campaign'));
         }
+    })
+    .catch(error => {
+        console.error('Error starting campaign:', error);
+        alert('Error starting campaign. Please try again.');
     });
 }
 
 function pauseCampaign(id) {
+    console.log('Pausing campaign:', id);
     fetch(`/api/campaigns/${id}/pause`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'}
     })
     .then(response => response.json())
     .then(data => {
+        console.log('Pause response:', data);
         if (data.success) {
             loadCampaigns(); // Reload the list
         } else {
-            alert('Error: ' + data.message);
+            alert('Error: ' + (data.message || 'Failed to pause campaign'));
         }
+    })
+    .catch(error => {
+        console.error('Error pausing campaign:', error);
+        alert('Error pausing campaign. Please try again.');
     });
 }
 
 function viewCampaign(id) {
+    console.log('Viewing campaign:', id);
     // For now, just show an alert. You can implement a detailed view later
     alert(`Campaign details for ID: ${id}`);
 }
 
 function deleteCampaign(id, name) {
-    if (confirm(`Are you sure you want to delete the campaign "${name}"? This action cannot be undone.`)) {
-        fetch(`/api/campaigns/${id}`, {
-            method: 'DELETE',
-            headers: {'Content-Type': 'application/json'}
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                alert('Campaign deleted successfully!');
-                loadCampaigns(); // Reload the list
-            } else {
-                alert('Error: ' + (data.message || 'Failed to delete campaign'));
-            }
-        })
-        .catch(error => {
-            console.error('Error deleting campaign:', error);
-            alert('Error deleting campaign. Please try again.');
-        });
+    console.log('Attempting to delete campaign:', id, name);
+    
+    if (!confirm(`Are you sure you want to delete the campaign "${name}"? This action cannot be undone.`)) {
+        return;
     }
+    
+    console.log('Confirmed deletion, sending request...');
+    
+    fetch(`/api/campaigns/${id}`, {
+        method: 'DELETE',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => {
+        console.log('Delete response status:', response.status);
+        return response.json();
+    })
+    .then(data => {
+        console.log('Delete response data:', data);
+        if (data.success) {
+            alert('Campaign deleted successfully!');
+            loadCampaigns(); // Reload the list
+        } else {
+            alert('Error: ' + (data.message || 'Failed to delete campaign'));
+        }
+    })
+    .catch(error => {
+        console.error('Error deleting campaign:', error);
+        alert('Error deleting campaign. Please try again.');
+    });
 }
 
 // Load campaigns when page loads
