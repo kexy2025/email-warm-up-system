@@ -747,7 +747,7 @@ def process_warmup_campaigns():
                             
                             logger.info(f"📨 Email to {recipient['email']}: {'✅' if success else '❌'}")
 
-    Copy                            # Delay between emails (shorter for demo accounts)
+# Delay between emails (shorter for demo accounts)
                             delay = random.uniform(5, 10) if user.is_demo() else random.uniform(30, 60)
                             time.sleep(delay)
                         
