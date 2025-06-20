@@ -36,11 +36,40 @@
 
 {% block scripts %}
 <script>
+// Enhanced authentication check
+async function checkAuthStatus() {
+    try {
+        const response = await fetch('/api/dashboard-stats');
+        if (response.status === 401 || response.status === 403) {
+            alert('Your session has expired. Please log in again.');
+            window.location.href = '/login';
+            return false;
+        }
+        return true;
+    } catch (error) {
+        console.error('Auth check failed:', error);
+        return true; // Assume okay if check fails
+    }
+}
+
 // Load campaigns
 function loadCampaigns() {
-    fetch('/api/campaigns')
-        .then(response => response.json())
+    fetch('/api/campaigns', {
+        credentials: 'same-origin',
+        headers: {
+            'Cache-Control': 'no-cache'
+        }
+    })
+        .then(response => {
+            if (response.status === 401 || response.status === 403) {
+                window.location.href = '/login';
+                return;
+            }
+            return response.json();
+        })
         .then(campaigns => {
+            if (!campaigns) return;
+            
             console.log('API Response:', campaigns); // Debug log
             const container = document.getElementById('campaigns-container');
             
@@ -113,7 +142,7 @@ function loadCampaigns() {
                                 <button onclick="viewCampaign(${campaign.id})" class="inline-flex items-center px-3 py-1 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
                                     <i class="fas fa-eye mr-1"></i> View
                                 </button>
-                                <button onclick="deleteCampaign(${campaign.id}, '${(campaign.name || 'Unnamed Campaign').replace(/'/g, "\\'")}'); event.stopPropagation();" class="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-red-700 bg-red-100 hover:bg-red-200">
+                                <button onclick="deleteCampaign(${campaign.id}, '${(campaign.name || 'Unnamed Campaign').replace(/'/g, "\\'")}');" class="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-red-700 bg-red-100 hover:bg-red-200">
                                     <i class="fas fa-trash mr-1"></i> Delete
                                 </button>
                             </div>
@@ -137,46 +166,68 @@ function loadCampaigns() {
 }
 
 // Campaign actions
-function startCampaign(id) {
+async function startCampaign(id) {
+    if (!(await checkAuthStatus())) return;
+    
     console.log('Starting campaign:', id);
-    fetch(`/api/campaigns/${id}/start`, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'}
-    })
-    .then(response => response.json())
-    .then(data => {
+    
+    try {
+        const response = await fetch(`/api/campaigns/${id}/start`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            credentials: 'same-origin'
+        });
+        
+        if (response.status === 401 || response.status === 403) {
+            alert('Authentication required. Please log in again.');
+            window.location.href = '/login';
+            return;
+        }
+        
+        const data = await response.json();
         console.log('Start response:', data);
+        
         if (data.success) {
             loadCampaigns(); // Reload the list
         } else {
             alert('Error: ' + (data.message || 'Failed to start campaign'));
         }
-    })
-    .catch(error => {
+    } catch (error) {
         console.error('Error starting campaign:', error);
         alert('Error starting campaign. Please try again.');
-    });
+    }
 }
 
-function pauseCampaign(id) {
+async function pauseCampaign(id) {
+    if (!(await checkAuthStatus())) return;
+    
     console.log('Pausing campaign:', id);
-    fetch(`/api/campaigns/${id}/pause`, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'}
-    })
-    .then(response => response.json())
-    .then(data => {
+    
+    try {
+        const response = await fetch(`/api/campaigns/${id}/pause`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            credentials: 'same-origin'
+        });
+        
+        if (response.status === 401 || response.status === 403) {
+            alert('Authentication required. Please log in again.');
+            window.location.href = '/login';
+            return;
+        }
+        
+        const data = await response.json();
         console.log('Pause response:', data);
+        
         if (data.success) {
             loadCampaigns(); // Reload the list
         } else {
             alert('Error: ' + (data.message || 'Failed to pause campaign'));
         }
-    })
-    .catch(error => {
+    } catch (error) {
         console.error('Error pausing campaign:', error);
         alert('Error pausing campaign. Please try again.');
-    });
+    }
 }
 
 function viewCampaign(id) {
@@ -185,38 +236,68 @@ function viewCampaign(id) {
     alert(`Campaign details for ID: ${id}`);
 }
 
-function deleteCampaign(id, name) {
+async function deleteCampaign(id, name) {
     console.log('Attempting to delete campaign:', id, name);
     
-    if (!confirm(`Are you sure you want to delete the campaign "${name}"? This action cannot be undone.`)) {
+    if (!confirm(`Are you sure you want to delete the campaign "${name}"?\n\nThis action cannot be undone.`)) {
         return;
     }
     
+    // Check authentication first
+    if (!(await checkAuthStatus())) return;
+    
     console.log('Confirmed deletion, sending request...');
     
-    fetch(`/api/campaigns/${id}`, {
-        method: 'DELETE',
-        headers: {
-            'Content-Type': 'application/json'
-        }
-    })
-    .then(response => {
+    try {
+        const response = await fetch(`/api/campaigns/${id}`, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            credentials: 'same-origin'
+        });
+        
         console.log('Delete response status:', response.status);
-        return response.json();
-    })
-    .then(data => {
+        console.log('Delete response headers:', response.headers);
+        
+        // Check for authentication issues
+        if (response.status === 401) {
+            alert('Your session has expired. Please log in again.');
+            window.location.href = '/login';
+            return;
+        }
+        
+        if (response.status === 403) {
+            alert('You do not have permission to delete this campaign.');
+            return;
+        }
+        
+        // Try to parse response
+        let data;
+        try {
+            data = await response.json();
+        } catch (parseError) {
+            console.error('Failed to parse response as JSON:', parseError);
+            alert('Unexpected response from server. Please try again.');
+            return;
+        }
+        
         console.log('Delete response data:', data);
+        
         if (data.success) {
             alert('Campaign deleted successfully!');
             loadCampaigns(); // Reload the list
+        } else if (data.error) {
+            // Handle API error responses
+            alert('Error: ' + data.error);
         } else {
+            // Handle failed responses
             alert('Error: ' + (data.message || 'Failed to delete campaign'));
         }
-    })
-    .catch(error => {
+    } catch (error) {
         console.error('Error deleting campaign:', error);
-        alert('Error deleting campaign. Please try again.');
-    });
+        alert('Network error occurred. Please check your connection and try again.');
+    }
 }
 
 // Load campaigns when page loads
