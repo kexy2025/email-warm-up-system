@@ -1425,7 +1425,7 @@ def api_reset_password():
         logger.error(f"Reset password error: {str(e)}")
         return jsonify({'success': False, 'message': 'Password reset failed'}), 500
 
-@app.route('/api/auth/logout', methods=['POST'])
+@app.route('/api/auth/logout', methods=['POST', 'GET'])
 @login_required
 def api_logout():
     try:
