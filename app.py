@@ -1435,6 +1435,11 @@ def api_logout():
         
         logger.info(f"User {username} logged out")
         
+        # For GET requests (direct browser access), redirect immediately
+        if request.method == 'GET':
+            return redirect(url_for('login'))
+        
+        # For POST requests (AJAX), return JSON
         return jsonify({
             'success': True,
             'message': 'Logout successful',
@@ -1443,7 +1448,11 @@ def api_logout():
         
     except Exception as e:
         logger.error(f"Logout error: {str(e)}")
-        return jsonify({'success': False, 'message': 'Logout failed'}), 500
+        # Always redirect to login on error for GET requests
+        if request.method == 'GET':
+            return redirect(url_for('login'))
+        else:
+            return jsonify({'success': False, 'message': 'Logout failed'}), 500
 
 @app.route('/api/auth/user')
 @login_required
