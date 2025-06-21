@@ -1787,7 +1787,7 @@ def manage_recipients():
             search = request.args.get('search', '').strip()
             category_filter = request.args.get('category', '').strip()
             
-            # ✅ FIXED: Get the actual status parameter from frontend
+    # ✅ FIXED: Get the actual status parameter from frontend
         status_filter = request.args.get('status', '').strip()
         active_only = request.args.get('active_only', 'false').lower() == 'true'
 
