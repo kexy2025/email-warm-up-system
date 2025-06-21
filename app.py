@@ -1792,9 +1792,9 @@ def manage_recipients():
 
 # ✅ FIXED: Handle status filtering properly
             if status_filter == 'active':
-            query = query.filter_by(status='active')
+                query = query.filter_by(status='active')
         elif status_filter == 'inactive':
-            query = query.filter_by(status='inactive')
+                query = query.filter_by(status='inactive')
         # If status_filter is empty (''), show all recipients (no additional filter)
             
             if search:
