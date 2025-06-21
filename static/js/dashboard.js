@@ -164,12 +164,32 @@ class EmailWarmupDashboard {
     }
 
     // ===========================================
-    // RECIPIENTS MANAGEMENT FUNCTIONALITY - FIXED FOR API RESPONSE STRUCTURE
+    // RECIPIENTS MANAGEMENT FUNCTIONALITY - FIXED WITH FILTERING
     // ===========================================
 
     async loadRecipients() {
         try {
-            const response = await fetch('/api/recipients');
+            // ✅ Get filter values from the form
+            const search = document.getElementById('search-input')?.value || '';
+            const category = document.getElementById('category-filter')?.value || '';
+            const status = document.getElementById('status-filter')?.value || '';
+            
+            // ✅ Build query parameters
+            const params = new URLSearchParams();
+            if (search) params.append('search', search);
+            if (category) params.append('category', category);
+            if (status) params.append('status', status);
+            
+            // ✅ Add active_only parameter based on status filter
+            if (status === 'active') {
+                params.append('active_only', 'true');
+            } else if (status === 'inactive') {
+                params.append('active_only', 'false');
+            } else {
+                params.append('active_only', 'false'); // Show all when "All Recipients" is selected
+            }
+            
+            const response = await fetch(`/api/recipients?${params.toString()}`);
             if (!response.ok) {
                 console.warn('Recipients API not available:', response.status);
                 this.recipients = [];
@@ -178,11 +198,11 @@ class EmailWarmupDashboard {
                 return;
             }
             
-            // ✅ FIXED: Handle the correct API response structure
+            // ✅ Handle the correct API response structure
             const data = await response.json();
+            console.log('Recipients API response:', data); // Debug log
             
             // The API returns: { recipients: [...], total_count: X, active_count: Y, categories: [...] }
-            // We need to access data.recipients, not just data
             this.recipients = data.recipients || [];
             this.renderRecipients(this.recipients);
             this.updateRecipientStats(data);
@@ -201,10 +221,21 @@ class EmailWarmupDashboard {
     updateCategoryFilter(categories) {
         const categoryFilter = document.getElementById('category-filter');
         if (categoryFilter && categories.length > 0) {
+            // Save current selection
+            const currentValue = categoryFilter.value;
+            
             // Clear existing options except "All Categories"
             const allOption = categoryFilter.querySelector('option[value=""]');
             categoryFilter.innerHTML = '';
-            if (allOption) categoryFilter.appendChild(allOption);
+            if (allOption) {
+                categoryFilter.appendChild(allOption);
+            } else {
+                // Create "All Categories" option if it doesn't exist
+                const allCategoriesOption = document.createElement('option');
+                allCategoriesOption.value = '';
+                allCategoriesOption.textContent = 'All Categories';
+                categoryFilter.appendChild(allCategoriesOption);
+            }
             
             // Add dynamic categories
             categories.forEach(category => {
@@ -213,6 +244,9 @@ class EmailWarmupDashboard {
                 option.textContent = category;
                 categoryFilter.appendChild(option);
             });
+            
+            // Restore selection
+            categoryFilter.value = currentValue;
         }
     }
 
@@ -224,7 +258,7 @@ class EmailWarmupDashboard {
             container.innerHTML = `
                 <div class="text-center py-12 text-gray-500">
                     <i class="fas fa-users text-4xl mb-4"></i>
-                    <p class="text-lg">No recipients yet. Add recipients to expand your email reach!</p>
+                    <p class="text-lg">No recipients found. Try adjusting your filters or add new recipients!</p>
                     <button onclick="dashboard.showAddRecipientModal()" class="mt-4 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors">
                         Add Recipients
                     </button>
@@ -240,7 +274,7 @@ class EmailWarmupDashboard {
                                     <h4 class="font-medium text-gray-900">${recipient.name || 'Unknown'}</h4>
                                     <p class="text-sm text-gray-600">${recipient.email}</p>
                                     <div class="mt-2 flex items-center space-x-4">
-                                        <span class="status-badge status-${recipient.status || 'active'}">
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${recipient.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
                                             ${(recipient.status || 'active').toUpperCase()}
                                         </span>
                                         <span class="text-xs text-gray-500">
@@ -779,7 +813,7 @@ class EmailWarmupDashboard {
                 return;
             }
 
-            const activeCampaign = campaigns.find(c => c.status === 'active') || campaigns[0];
+const activeCampaign = campaigns.find(c => c.status === 'active') || campaigns[0];
             const statsResponse = await fetch(`/api/campaigns/${activeCampaign.id}/stats`);
             const stats = await statsResponse.json();
             
@@ -807,7 +841,7 @@ class EmailWarmupDashboard {
                 `;
             }
         } catch (error) {
-console.error('Failed to load analytics:', error);
+            console.error('Failed to load analytics:', error);
         }
     }
 
@@ -949,7 +983,7 @@ function refreshDashboard() {
     }
 }
 
-// Initialize dashboard - FIXED VERSION (no logout conflicts)
+// Initialize dashboard with filter functionality
 let dashboard;
 document.addEventListener('DOMContentLoaded', function() {
     dashboard = new EmailWarmupDashboard();
@@ -976,5 +1010,28 @@ document.addEventListener('DOMContentLoaded', function() {
                 await dashboard.handleFileUpload({ target: fileInput });
             }
         });
+    }
+    
+    // ✅ ADD REAL-TIME SEARCH AND FILTER FUNCTIONALITY
+    const searchInput = document.getElementById('search-input');
+    if (searchInput) {
+        searchInput.addEventListener('input', () => {
+            clearTimeout(searchInput.searchTimeout);
+            searchInput.searchTimeout = setTimeout(() => {
+                dashboard.loadRecipients();
+            }, 300); // Wait 300ms after user stops typing
+        });
+    }
+    
+    // ✅ Add filter change listeners
+    const categoryFilter = document.getElementById('category-filter');
+    const statusFilter = document.getElementById('status-filter');
+    
+    if (categoryFilter) {
+        categoryFilter.addEventListener('change', () => dashboard.loadRecipients());
+    }
+    
+    if (statusFilter) {
+        statusFilter.addEventListener('change', () => dashboard.loadRecipients());
     }
 });
