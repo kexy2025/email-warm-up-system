@@ -1791,11 +1791,11 @@ def manage_recipients():
             active_only = request.args.get('active_only', 'false').lower() == 'true'
 
 # ✅ FIXED: Handle status filtering properly
-if status_filter == 'active':
-    query = query.filter_by(status='active')
-elif status_filter == 'inactive':
-    query = query.filter_by(status='inactive')
-# If status_filter is empty (''), show all recipients (no additional filter)
+            if status_filter == 'active':
+            query = query.filter_by(status='active')
+        elif status_filter == 'inactive':
+            query = query.filter_by(status='inactive')
+        # If status_filter is empty (''), show all recipients (no additional filter)
             
             if search:
                 query = query.filter(
