@@ -2079,7 +2079,7 @@ def campaign_detail(campaign_id):
             db.session.commit()
             return jsonify({'success': True, 'message': 'Campaign updated', 'campaign': campaign.to_dict()})
 
- elif request.method == 'DELETE':
+         elif request.method == 'DELETE':
             # Demo users cannot delete campaigns
             if current_user.is_demo():
                 return jsonify({'error': 'Demo accounts cannot delete campaigns'}), 403
