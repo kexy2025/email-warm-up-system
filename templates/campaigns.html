@@ -268,7 +268,8 @@ async function deleteCampaign(id, name) {
         }
         
         if (response.status === 403) {
-            alert('You do not have permission to delete this campaign.');
+        const errorData = await response.json();
+        alert(errorData.error || 'You do not have permission to delete this campaign.');
             return;
         }
         
