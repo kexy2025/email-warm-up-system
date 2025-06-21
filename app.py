@@ -2197,6 +2197,38 @@ def get_campaign_stats(campaign_id):
         logger.error(f"Error fetching campaign stats: {str(e)}")
         return jsonify({'error': 'Failed to fetch stats'}), 500
 
+@app.route('/api/campaigns/<int:campaign_id>/debug')
+@login_required
+def debug_campaign_deletion(campaign_id):
+    """Debug what's preventing campaign deletion"""
+    try:
+        campaign = db.session.get(Campaign, campaign_id)
+        if not campaign:
+            return jsonify({'error': 'Campaign not found'}), 404
+            
+        # Check ownership
+        if not current_user.is_admin() and campaign.user_id != current_user.id:
+            return jsonify({'error': 'Access denied'}), 403
+            
+        email_log_count = EmailLog.query.filter_by(campaign_id=campaign_id).count()
+        recipient_count = CampaignRecipient.query.filter_by(campaign_id=campaign_id).count()
+        
+        return jsonify({
+            'campaign_id': campaign_id,
+            'campaign_name': campaign.name,
+            'user_id': campaign.user_id,
+            'current_user_id': current_user.id,
+            'is_demo': current_user.is_demo(),
+            'is_admin': current_user.is_admin(),
+            'email_logs': email_log_count,
+            'campaign_recipients': recipient_count,
+            'can_delete': not current_user.is_demo(),
+            'status': campaign.status
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/validate-smtp', methods=['POST'])
 @login_required
 def validate_smtp():
