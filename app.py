@@ -119,13 +119,11 @@ login_manager.login_message = 'Please log in to access this page.'
 login_manager.login_message_category = 'info'
 
 # ===========================================
-# PROTONMAIL AUTO-REPLY INTEGRATION
+# MULTI-ACCOUNT PROTONMAIL AUTO-REPLY INTEGRATION
 # ===========================================
 
 import imaplib
 import email
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 import ssl
 
 # Additional imports for ProtonMail integration
@@ -138,245 +136,221 @@ except ImportError:
     openai = None
     print("⚠️ OpenAI module not available - using fallback replies")
 
-class ProtonMailManager:
+class MultiAccountProtonMailAutoReply:
     def __init__(self):
+        self.imap_server = 'mail.protonmail.ch'
+        self.smtp_server = 'mail.protonmail.ch'
+        self.imap_port = 993
+        self.smtp_port = 587
+        
+        # Configure OpenAI if available
         self.openai_api_key = os.environ.get('OPENAI_API_KEY')
-        self.accounts = self.load_proton_accounts()
+        if OPENAI_AVAILABLE and self.openai_api_key:
+            openai.api_key = self.openai_api_key
         
-    def load_proton_accounts(self):
-        """Load ProtonMail accounts - replace with your actual account"""
-        return [
-            {
-                'email': 'your_proton_email@proton.me',  # Replace with your actual email
-                'password': 'your_proton_password',      # Replace with your actual password
-                'name': 'Your Name'                      # Replace with your name
-            }
-            # Add more accounts here as you create them
-        ]
-    
-    def check_and_reply_emails(self):
-        """Check all ProtonMail accounts and send AI replies"""
-        replies_sent = 0
+        # Load all email accounts
+        self.accounts = []
+        for i in range(1, 6):  # Accounts 1-5
+            email_addr = os.environ.get(f'PROTONMAIL_EMAIL_{i}', '').strip()
+            password = os.environ.get(f'PROTONMAIL_PASSWORD_{i}', '').strip()
+            
+            if email_addr and password:
+                self.accounts.append({
+                    'email': email_addr,
+                    'password': password,
+                    'processed_emails': set(),
+                    'account_id': i
+                })
         
-        for account in self.accounts:
-            try:
-                # Connect to ProtonMail via IMAP
-                mail = self.connect_to_proton(account)
-                if not mail:
-                    continue
-                
-                # Get unread emails
-                unread_emails = self.get_unread_emails(mail)
-                logger.info(f"📧 Found {len(unread_emails)} unread emails for {account['email']}")
-                
-                # Process each email
-                for email_data in unread_emails:
-                    if self.should_reply_to_email(email_data):
-                        reply_sent = self.send_ai_reply(account, email_data)
-                        if reply_sent:
-                            replies_sent += 1
-                            # Mark as read
-                            self.mark_email_as_read(mail, email_data['uid'])
-                
-                mail.logout()
-                
-            except Exception as e:
-                logger.error(f"❌ Error processing {account['email']}: {str(e)}")
+        print(f"✅ Loaded {len(self.accounts)} ProtonMail accounts")
         
-        logger.info(f"✅ Sent {replies_sent} AI replies across all accounts")
-        return replies_sent
-    
-    def connect_to_proton(self, account):
-        """Connect to ProtonMail via IMAP"""
-        try:
-            mail = imaplib.IMAP4_SSL('mail.proton.me', 993)
-            mail.login(account['email'], account['password'])
-            mail.select('INBOX')
-            return mail
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to connect to ProtonMail for {account['email']}: {str(e)}")
-            return None
-    
-    def get_unread_emails(self, mail):
-        """Get unread emails from the inbox"""
-        try:
-            # Search for unread emails
-            status, messages = mail.search(None, 'UNSEEN')
-            email_ids = messages[0].split()
-            
-            emails = []
-            for email_id in email_ids[-10:]:  # Process last 10 unread emails
-                try:
-                    status, msg_data = mail.fetch(email_id, '(RFC822)')
-                    email_body = msg_data[0][1]
-                    email_message = email.message_from_bytes(email_body)
-                    
-                    # Extract email content
-                    sender = email_message['From']
-                    subject = email_message['Subject']
-                    body = self.extract_email_body(email_message)
-                    
-                    emails.append({
-                        'uid': email_id,
-                        'sender': sender,
-                        'subject': subject,
-                        'body': body,
-                        'message': email_message
-                    })
-                    
-                except Exception as e:
-                    logger.error(f"Error processing email {email_id}: {str(e)}")
-                    continue
-            
-            return emails
-            
-        except Exception as e:
-            logger.error(f"Error getting unread emails: {str(e)}")
-            return []
-    
-    def extract_email_body(self, email_message):
-        """Extract text content from email message"""
-        body = ""
-        
-        if email_message.is_multipart():
-            for part in email_message.walk():
-                if part.get_content_type() == "text/plain":
-                    body = part.get_payload(decode=True).decode('utf-8', errors='ignore')
-                    break
-        else:
-            body = email_message.get_payload(decode=True).decode('utf-8', errors='ignore')
-        
-        return body[:1000]  # Limit to first 1000 characters
-    
-    def should_reply_to_email(self, email_data):
-        """Determine if we should reply to this email"""
-        sender = email_data['sender'].lower()
-        subject = email_data['subject'].lower() if email_data['subject'] else ''
-        
-        # Only reply to emails from your KEXY system
-        kexy_senders = [
-            'demo@example.com',           # Your demo email
-            'scott@getkexy.com',          # Add your actual sending emails here
-            'noreply@kexy.com',           # Add more as needed
-        ]
-        
-        for kexy_sender in kexy_senders:
-            if kexy_sender.lower() in sender:
-                return True
-        
-        # Also reply to emails with warmup-related subjects
-        warmup_keywords = ['warmup', 'follow up', 'partnership', 'collaboration']
-        for keyword in warmup_keywords:
-            if keyword in subject:
-                return True
-        
-        return False
-    
-    def send_ai_reply(self, account, email_data):
-        """Generate AI reply and send it"""
-        try:
-            # Generate AI reply
-            reply_content = self.generate_ai_reply(email_data)
-            
-            if not reply_content:
-                return False
-            
-            # Create reply email
-            reply_msg = MIMEMultipart()
-            reply_msg['From'] = account['email']
-            reply_msg['To'] = email_data['sender']
-            reply_msg['Subject'] = f"Re: {email_data['subject']}"
-            
-            # Add reply body
-            reply_msg.attach(MIMEText(reply_content, 'plain'))
-            
-            # Send via SMTP
-            success = self.send_smtp_reply(account, reply_msg)
-            
-            if success:
-                logger.info(f"📨 Sent AI reply to {email_data['sender']}")
-            
-            return success
-            
-        except Exception as e:
-            logger.error(f"Error sending AI reply: {str(e)}")
-            return False
-    
-    def generate_ai_reply(self, email_data):
+    def generate_ai_reply(self, original_subject, original_body, sender_email, account_email):
         """Generate AI reply using OpenAI"""
         try:
             if not OPENAI_AVAILABLE or not self.openai_api_key:
                 return self.get_fallback_reply()
             
-            # Create context-aware prompt
             prompt = f"""
-            Generate a natural, professional reply to this email. Keep it brief (1-2 sentences) and conversational.
+            You are KEXY AI assistant replying from {account_email}. 
             
             Original email:
-            From: {email_data['sender']}
-            Subject: {email_data['subject']}
-            Content: {email_data['body'][:500]}
+            From: {sender_email}
+            Subject: {original_subject}
+            Message: {original_body}
             
-            Generate a positive, interested response that continues the conversation.
+            Generate a professional, helpful reply. Keep it concise and friendly.
+            Vary your response style slightly to seem more human.
             """
             
-            openai.api_key = self.openai_api_key
-            
-            response = openai.ChatCompletion.create(
+            response = openai.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=150,
-                temperature=0.7
+                max_tokens=300,
+                temperature=0.8  # Higher temperature for variety
             )
             
             return response.choices[0].message.content.strip()
-            
         except Exception as e:
-            logger.error(f"AI reply generation failed: {str(e)}")
+            print(f"AI reply generation error: {e}")
             return self.get_fallback_reply()
     
     def get_fallback_reply(self):
         """Fallback replies if AI fails"""
         replies = [
-            "Thanks for reaching out! This looks interesting. I'd like to learn more about this opportunity.",
-            "Great to hear from you! I appreciate you keeping me updated on this.",
-            "Thanks for the information. This sounds like something I'd be interested in exploring further.",
-            "I appreciate you sharing this with me. Let me know if you need any additional information from my end.",
-            "Thanks for following up. I'm definitely interested in learning more about this."
+            "Thank you for your email. I'll get back to you soon!",
+            "Thanks for reaching out! I'll respond to your message shortly.",
+            "I appreciate your email and will reply as soon as possible.",
+            "Thank you for contacting me. I'll be in touch soon!",
+            "Thanks for your message! I'll get back to you quickly.",
+            "Great to hear from you! I'll respond to this shortly.",
+            "I appreciate you reaching out. Will get back to you soon!",
+            "Thanks for the email! I'll review this and respond quickly."
         ]
         return random.choice(replies)
     
-    def send_smtp_reply(self, account, reply_msg):
-        """Send reply via SMTP"""
+    def send_reply(self, account, to_email, subject, body, original_message_id=None):
+        """Send reply email from specific account"""
         try:
-            # Use ProtonMail SMTP
-            server = smtplib.SMTP('mail.proton.me', 587)
-            server.starttls()
-            server.login(account['email'], account['password'])
-            server.send_message(reply_msg)
-            server.quit()
+            msg = MIMEMultipart()
+            msg['From'] = account['email']
+            msg['To'] = to_email
+            msg['Subject'] = f"Re: {subject}" if not subject.startswith('Re:') else subject
             
+            if original_message_id:
+                msg['In-Reply-To'] = original_message_id
+                msg['References'] = original_message_id
+            
+            msg.attach(MIMEText(body, 'plain'))
+            
+            with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
+                server.starttls()
+                server.login(account['email'], account['password'])
+                server.send_message(msg)
+            
+            print(f"✅ Reply sent from {account['email']} to {to_email}")
             return True
-            
         except Exception as e:
-            logger.error(f"SMTP send failed: {str(e)}")
+            print(f"❌ Failed to send reply from {account['email']}: {e}")
             return False
     
-    def mark_email_as_read(self, mail, email_uid):
-        """Mark email as read"""
+    def check_account_emails(self, account):
+        """Check emails for a specific account"""
         try:
-            mail.store(email_uid, '+FLAGS', '\\Seen')
+            with imaplib.IMAP4_SSL(self.imap_server, self.imap_port) as mail:
+                mail.login(account['email'], account['password'])
+                mail.select('INBOX')
+                
+                # Search for unread emails
+                status, messages = mail.search(None, 'UNSEEN')
+                email_ids = messages[0].split()
+                
+                for email_id in email_ids:
+                    email_id_str = email_id.decode()
+                    
+                    if email_id_str in account['processed_emails']:
+                        continue
+                    
+                    status, msg_data = mail.fetch(email_id, '(RFC822)')
+                    email_message = email.message_from_bytes(msg_data[0][1])
+                    
+                    sender = email_message['From']
+                    subject = email_message['Subject'] or 'No Subject'
+                    message_id = email_message['Message-ID']
+                    
+                    # Skip if it's our own email or already a reply
+                    if any(acc['email'] in sender for acc in self.accounts) or subject.startswith('Re:'):
+                        account['processed_emails'].add(email_id_str)
+                        continue
+                    
+                    # Get email body
+                    body = ""
+                    if email_message.is_multipart():
+                        for part in email_message.walk():
+                            if part.get_content_type() == "text/plain":
+                                body = part.get_payload(decode=True).decode('utf-8', errors='ignore')
+                                break
+                    else:
+                        body = email_message.get_payload(decode=True).decode('utf-8', errors='ignore')
+                    
+                    # Generate and send AI reply
+                    ai_reply = self.generate_ai_reply(subject, body, sender, account['email'])
+                    
+                    # Add random delay (1-5 minutes) to seem more human
+                    delay = random.randint(60, 300)
+                    time.sleep(delay)
+                    
+                    if self.send_reply(account, sender, subject, ai_reply, message_id):
+                        account['processed_emails'].add(email_id_str)
+                        
+                        # Log to KEXY system
+                        with app.app_context():
+                            log_entry = f"Auto-reply sent from {account['email']} to {sender} - Subject: {subject}"
+                            print(f"📧 KEXY Multi-Account: {log_entry}")
+                    
         except Exception as e:
-            logger.error(f"Failed to mark email as read: {str(e)}")
+            print(f"❌ Email check error for {account['email']}: {e}")
+    
+    def monitor_account(self, account):
+        """Monitor a specific account continuously"""
+        while True:
+            try:
+                self.check_account_emails(account)
+                # Random check interval (45-75 seconds) to avoid patterns
+                check_interval = random.randint(45, 75)
+                time.sleep(check_interval)
+            except Exception as e:
+                print(f"❌ Monitor error for {account['email']}: {e}")
+                time.sleep(300)  # Wait 5 minutes on error
+    
+    def start_monitoring(self):
+        """Start monitoring all accounts"""
+        if not self.accounts:
+            print("❌ No ProtonMail accounts configured")
+            return
+        
+        for account in self.accounts:
+            thread = threading.Thread(
+                target=self.monitor_account, 
+                args=(account,), 
+                daemon=True,
+                name=f"ProtonMail-{account['account_id']}"
+            )
+            thread.start()
+            print(f"✅ Started monitoring {account['email']}")
+        
+        print(f"🚀 ProtonMail multi-account monitoring started for {len(self.accounts)} accounts")
 
-# Initialize ProtonMail manager
-try:
-    proton_manager = ProtonMailManager()
-    logger.info("✅ ProtonMail manager initialized")
-except Exception as e:
-    logger.error(f"❌ ProtonMail manager initialization failed: {str(e)}")
-    proton_manager = None
+# Initialize Multi-Account ProtonMail auto-reply
+protonmail_multi_reply = MultiAccountProtonMailAutoReply()
+
+# Test endpoint for multi-account system
+@app.route('/test-multi-email')
+@login_required
+def test_multi_email():
+    """Test endpoint to check all email accounts"""
+    results = []
+    
+    for account in protonmail_multi_reply.accounts:
+        try:
+            protonmail_multi_reply.check_account_emails(account)
+            results.append({
+                'account': account['email'],
+                'status': 'success',
+                'message': 'Email check completed'
+            })
+        except Exception as e:
+            results.append({
+                'account': account['email'],
+                'status': 'error',
+                'message': str(e)
+            })
+    
+    return jsonify({
+        'status': 'completed',
+        'results': results,
+        'total_accounts': len(protonmail_multi_reply.accounts),
+        'timestamp': datetime.now().isoformat()
+    })
 
 # AUTO-CREATE DATABASE TABLES ON STARTUP (Railway-friendly)
 def init_database():
