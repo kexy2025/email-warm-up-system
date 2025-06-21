@@ -1789,13 +1789,12 @@ def manage_recipients():
             # ✅ FIXED: Get the actual status parameter from frontend
             status_filter = request.args.get('status', '').strip()
             active_only = request.args.get('active_only', 'false').lower() == 'true'
-            
-# Build query - users can only see their own recipients
-            # ✅ FIXED: Handle status filtering properly
-            if status_filter == 'active':
-            query = query.filter_by(status='active')
-            elif status_filter == 'inactive':
-                query = query.filter_by(status='inactive')
+
+# ✅ FIXED: Handle status filtering properly
+if status_filter == 'active':
+    query = query.filter_by(status='active')
+elif status_filter == 'inactive':
+    query = query.filter_by(status='inactive')
 # If status_filter is empty (''), show all recipients (no additional filter)
             
             if search:
