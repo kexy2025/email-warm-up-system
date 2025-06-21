@@ -337,69 +337,45 @@
 
         // Enhanced logout functionality with better error handling
         function handleLogout() {
-            console.log('Logout button clicked');
-            
-            if (!confirm('Are you sure you want to sign out?')) {
-                return;
-            }
+    console.log('Logout button clicked');
+    
+    if (!confirm('Are you sure you want to sign out?')) {
+        return;
+    }
 
-            // Show loading state
-            const logoutButtons = document.querySelectorAll('[onclick="handleLogout()"]');
-            logoutButtons.forEach(button => {
-                button.innerHTML = '<i class="fas fa-spinner fa-spin mr-3 text-gray-400"></i>Signing out...';
-                button.style.pointerEvents = 'none';
-            });
+    // Show loading state
+    const logoutButtons = document.querySelectorAll('[onclick="handleLogout()"]');
+    logoutButtons.forEach(button => {
+        button.innerHTML = '<i class="fas fa-spinner fa-spin mr-3 text-gray-400"></i>Signing out...';
+        button.style.pointerEvents = 'none';
+    });
 
-            // Try POST request first
-            fetch('/api/auth/logout', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                credentials: 'same-origin'
-            })
-            .then(response => {
-                console.log('Logout response status:', response.status);
-                
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}`);
-                }
-                
-                return response.json();
-            })
-            .then(data => {
-                console.log('Logout response data:', data);
-                
-                if (data.success) {
-                    showToast('Signed out successfully', 'success');
-                    setTimeout(() => {
-                        window.location.href = data.redirect_url || '/login';
-                    }, 500);
-                } else {
-                    throw new Error(data.message || 'Logout failed');
-                }
-            })
-            .catch(error => {
-                console.error('POST logout failed, trying GET fallback:', error);
-                
-                // Fallback: try GET method by redirecting
-                showToast('Redirecting to logout...', 'info');
-                setTimeout(() => {
-                    window.location.href = '/api/auth/logout';
-                }, 500);
-            })
-            .finally(() => {
-                // Reset button state if still on page
-                setTimeout(() => {
-                    logoutButtons.forEach(button => {
-                        if (document.contains(button)) {
-                            button.innerHTML = '<i class="fas fa-sign-out-alt mr-3 text-gray-400"></i>Sign Out';
-                            button.style.pointerEvents = 'auto';
-                        }
-                    });
-                }, 3000);
-            });
+    // Simple redirect approach - most reliable
+    try {
+        // Clear any local data first
+        if (typeof(Storage) !== "undefined") {
+            localStorage.clear();
+            sessionStorage.clear();
         }
+        
+        // Force redirect to logout endpoint
+        window.location.href = '/api/auth/logout';
+        
+    } catch (error) {
+        console.error('Logout error:', error);
+        
+        // Fallback: try alternative logout method
+        fetch('/api/auth/logout', {
+            method: 'POST',
+            credentials: 'same-origin'
+        }).then(() => {
+            window.location.href = '/login';
+        }).catch(() => {
+            // Last resort: direct redirect
+            window.location.href = '/login';
+        });
+    }
+}
 
         // Toast notification function
         function showToast(message, type = 'info') {
