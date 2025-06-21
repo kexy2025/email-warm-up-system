@@ -1787,27 +1787,30 @@ def manage_recipients():
             search = request.args.get('search', '').strip()
             category_filter = request.args.get('category', '').strip()
             
-        # ✅ FIXED: Get the actual status parameter from frontend
-        status_filter = request.args.get('status', '').strip()
-        active_only = request.args.get('active_only', 'false').lower() == 'true'
+            # ✅ FIXED: Get the actual status parameter from frontend
+            status_filter = request.args.get('status', '').strip()
+            active_only = request.args.get('active_only', 'false').lower() == 'true'
 
-        # Build query - users can only see their own recipients
-        query = Recipient.query.filter_by(user_id=current_user.id)
-        
-        if active_only:
-            query = query.filter_by(status='active')
-        
-        if search:
-            query = query.filter(
-                db.or_(
-                    Recipient.email.ilike(f'%{search}%'),
-                    Recipient.name.ilike(f'%{search}%')
-                )
-            )
-        
-        if category_filter:
-            query = query.filter_by(category=category_filter)
+            # Build query - users can only see their own recipients
+            query = Recipient.query.filter_by(user_id=current_user.id)
             
+            if active_only:
+                query = query.filter_by(status='active')
+            
+            if search:
+                query = query.filter(
+                    db.or_(
+                        Recipient.email.ilike(f'%{search}%'),
+                        Recipient.name.ilike(f'%{search}%')
+                    )
+                )
+            
+            if category_filter:
+                query = query.filter_by(category=category_filter)
+                
+            # Order by most recently created
+            query = query.order_by(Recipient.created_at.desc())
+                
             # Paginate
             recipients = query.paginate(page=page, per_page=per_page, error_out=False)
             
@@ -1816,20 +1819,20 @@ def manage_recipients():
             category_list = [c[0] for c in categories if c[0]]
             
             return jsonify({
-    'recipients': [r.to_dict() for r in recipients.items],
-    'pagination': {
-        'page': recipients.page,
-        'pages': recipients.pages,
-        'per_page': recipients.per_page,
-        'total': recipients.total,
-        'has_next': recipients.has_next,
-        'has_prev': recipients.has_prev
-    },
-    'categories': sorted(category_list),
-    'total_count': Recipient.query.filter_by(user_id=current_user.id).count(),
-    'active_count': Recipient.query.filter_by(user_id=current_user.id, status='active').count(),
-    'filtered_count': recipients.total
-})
+                'recipients': [r.to_dict() for r in recipients.items],
+                'pagination': {
+                    'page': recipients.page,
+                    'pages': recipients.pages,
+                    'per_page': recipients.per_page,
+                    'total': recipients.total,
+                    'has_next': recipients.has_next,
+                    'has_prev': recipients.has_prev
+                },
+                'categories': sorted(category_list),
+                'total_count': Recipient.query.filter_by(user_id=current_user.id).count(),
+                'active_count': Recipient.query.filter_by(user_id=current_user.id, status='active').count(),
+                'filtered_count': recipients.total
+            })
             
         except Exception as e:
             logger.error(f"Error fetching recipients: {str(e)}")
