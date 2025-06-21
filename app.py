@@ -1099,8 +1099,20 @@ def start_warmup_scheduler():
 # AUTHENTICATION ROUTES
 @app.route('/login')
 def login():
+    # Force session clear on login page access after logout
+    if request.args.get('logout') == 'true':
+        session.clear()
+    
+    # Check if user is still authenticated after potential session clear
     if current_user.is_authenticated:
-        return redirect(url_for('dashboard'))
+        try:
+            # Double-check if user is really authenticated
+            if current_user.is_active:
+                return redirect(url_for('dashboard'))
+        except:
+            # If there's an issue with user authentication, clear session
+            session.clear()
+    
     return render_template('login.html')
 
 @app.route('/register')
