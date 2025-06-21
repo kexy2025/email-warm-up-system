@@ -1449,7 +1449,7 @@ def api_logout():
         
         # For GET requests (direct browser access), redirect immediately
         if request.method == 'GET':
-            return redirect(url_for('login'))
+            return redirect(url_for('login', logout='true'))
         
         # For POST requests (AJAX), return JSON
         return jsonify({
@@ -1462,7 +1462,7 @@ def api_logout():
         logger.error(f"Logout error: {str(e)}")
         # Always redirect to login on error for GET requests
         if request.method == 'GET':
-            return redirect(url_for('login'))
+            return redirect(url_for('login', logout='true'))
         else:
             return jsonify({'success': False, 'message': 'Logout failed'}), 500
 
