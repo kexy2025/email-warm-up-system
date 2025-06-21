@@ -1791,7 +1791,7 @@ def manage_recipients():
             active_only = request.args.get('active_only', 'false').lower() == 'true'
 
  # Build query - users can only see their own recipients
-        query = Recipient.query.filter_by(user_id=current_user.id)
+    query = Recipient.query.filter_by(user_id=current_user.id)
         
         # Handle status filtering properly
         if status_filter == 'active':
