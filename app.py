@@ -1786,18 +1786,16 @@ def manage_recipients():
             per_page = request.args.get('per_page', 50, type=int)
             search = request.args.get('search', '').strip()
             category_filter = request.args.get('category', '').strip()
+            
             # ✅ FIXED: Get the actual status parameter from frontend
-            status_filter = request.args.get('status', '').strip()
-            active_only = request.args.get('active_only', 'false').lower() == 'true'
+        status_filter = request.args.get('status', '').strip()
+        active_only = request.args.get('active_only', 'false').lower() == 'true'
 
- # Build query - users can only see their own recipients
-    query = Recipient.query.filter_by(user_id=current_user.id)
+        # Build query - users can only see their own recipients
+        query = Recipient.query.filter_by(user_id=current_user.id)
         
-        # Handle status filtering properly
-        if status_filter == 'active':
+        if active_only:
             query = query.filter_by(status='active')
-        elif status_filter == 'inactive':
-            query = query.filter_by(status='inactive')
         
         if search:
             query = query.filter(
@@ -1809,8 +1807,6 @@ def manage_recipients():
         
         if category_filter:
             query = query.filter_by(category=category_filter)
-            # Order by most recently created
-            query = query.order_by(Recipient.created_at.desc())
             
             # Paginate
             recipients = query.paginate(page=page, per_page=per_page, error_out=False)
