@@ -632,11 +632,19 @@ class EmailWarmupDashboard {
                                         <i class="fas fa-play"></i>
                                     </button>`
                                 }
-                                <button onclick="dashboard.viewCampaign(${campaign.id})" class="text-blue-600 hover:text-blue-700" title="View">
-                                    <i class="fas fa-eye"></i>
-                                </button>
-                                <button onclick="dashboard.deleteCampaign(${campaign.id})" class="text-red-600 hover:text-red-700" title="Delete">
-                                    <i class="fas fa-trash"></i>
+                        <button onclick="dashboard.manageCampaignRecipients(${campaign.id})" class="text-purple-600 hover:text-purple-700" title="Manage Recipients">
+                            <i class="fas fa-users"></i>
+                        </button>
+                        <button onclick="dashboard.viewCampaign(${campaign.id})" class="text-blue-600 hover:text-blue-700" title="View">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                        <button onclick="dashboard.deleteCampaign(${campaign.id})" class="text-red-600 hover:text-red-700" title="Delete">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
                                 </button>
                             </div>
                         </div>
