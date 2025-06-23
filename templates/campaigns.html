@@ -37,13 +37,8 @@
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 <script>
-// Create the dashboard object if it doesn't exist
-if (typeof window.dashboard === 'undefined') {
-    window.dashboard = {};
-}
-
-// Add the manageCampaignRecipients function to the dashboard object
-window.dashboard.manageCampaignRecipients = function(campaignId) {
+// Simple working function - this is the fix!
+function manageCampaignRecipients(campaignId) {
     console.log('Managing recipients for campaign:', campaignId);
     
     // Create and show a simple modal
@@ -103,9 +98,7 @@ window.dashboard.manageCampaignRecipients = function(campaignId) {
         const modal = document.querySelector('div[style*="position: fixed"]');
         if (modal) modal.remove();
     };
-};
-
-console.log('Dashboard object with manageCampaignRecipients created');
+}
 
 // Enhanced authentication check
 async function checkAuthStatus() {
@@ -202,7 +195,7 @@ function loadCampaigns() {
                                 </div>
                             </div>
                             <div class="flex items-center space-x-2">
-                                <button onclick="dashboard.manageCampaignRecipients(${campaign.id})" class="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-purple-700 bg-purple-100 hover:bg-purple-200">
+                                <button onclick="manageCampaignRecipients(${campaign.id})" class="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-purple-700 bg-purple-100 hover:bg-purple-200">
                                     <i class="fas fa-users mr-1"></i> 👥
                                 </button>
                                 ${campaign.status === 'active' ? 
