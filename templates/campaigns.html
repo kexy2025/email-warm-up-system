@@ -306,4 +306,21 @@ document.addEventListener('DOMContentLoaded', loadCampaigns);
 </script>
 </script>
 <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+<script>
+// Fallback function if dashboard object doesn't exist
+if (typeof dashboard === 'undefined' || !dashboard.manageCampaignRecipients) {
+    console.log('Dashboard not loaded, creating fallback function');
+    
+    function manageCampaignRecipients(campaignId) {
+        alert('Managing recipients for campaign ' + campaignId);
+        
+        // Simple redirect to recipients page for now
+        window.location.href = '/recipients?campaign_id=' + campaignId;
+    }
+    
+    // Make it globally available
+    window.manageCampaignRecipients = manageCampaignRecipients;
+}
+</script>
 {% endblock %}
