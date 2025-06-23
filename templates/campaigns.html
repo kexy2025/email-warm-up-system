@@ -37,11 +37,11 @@
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 <script>
-// Simple working function - this is the fix!
+// WORKING manageCampaignRecipients function
 function manageCampaignRecipients(campaignId) {
     console.log('Managing recipients for campaign:', campaignId);
     
-    // Create and show a simple modal
+    // Create and show modal
     const modal = document.createElement('div');
     modal.style.cssText = `
         position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
@@ -50,13 +50,13 @@ function manageCampaignRecipients(campaignId) {
     `;
     
     modal.innerHTML = `
-        <div style="background: white; padding: 20px; border-radius: 8px; max-width: 400px;">
+        <div style="background: white; padding: 20px; border-radius: 8px; max-width: 400px; max-height: 80vh; overflow-y: auto;">
             <h3>Assign Recipients to Campaign ${campaignId}</h3>
             <p>Available Recipients:</p>
-            <div id="recipient-list">Loading...</div>
+            <div id="recipient-list" style="max-height: 200px; overflow-y: auto; margin: 10px 0;">Loading...</div>
             <div style="margin-top: 15px;">
                 <button onclick="assignAllRecipients(${campaignId})" style="background: #007bff; color: white; padding: 8px 16px; border: none; border-radius: 4px; margin-right: 10px;">Assign All Active Recipients</button>
-                <button onclick="closeModal()" style="background: #6c757d; color: white; padding: 8px 16px; border: none; border-radius: 4px;">Close</button>
+                <button onclick="closeRecipientModal()" style="background: #6c757d; color: white; padding: 8px 16px; border: none; border-radius: 4px;">Close</button>
             </div>
         </div>
     `;
@@ -68,35 +68,63 @@ function manageCampaignRecipients(campaignId) {
         .then(response => response.json())
         .then(data => {
             const listEl = document.getElementById('recipient-list');
-            if (data.recipients && data.recipients.length > 0) {
-                listEl.innerHTML = data.recipients.map(r => 
+            
+            // Handle different API response formats
+            let recipients = [];
+            if (data.recipients) {
+                recipients = data.recipients;
+            } else if (Array.isArray(data)) {
+                recipients = data;
+            } else if (data) {
+                recipients = [data];
+            }
+            
+            if (recipients && recipients.length > 0) {
+                listEl.innerHTML = recipients.map(r => 
                     `<div style="padding: 5px; border-bottom: 1px solid #eee;">
-                        <strong>${r.name}</strong> (${r.email}) - ${r.status}
+                        <strong>${r.name || 'No Name'}</strong> (${r.email || 'No Email'}) - ${r.status || 'Unknown'}
                     </div>`
                 ).join('');
             } else {
-                listEl.innerHTML = '<p>No recipients found</p>';
+                listEl.innerHTML = '<p>No recipients found. <a href="/recipients" style="color: #007bff;">Add recipients first</a></p>';
             }
+        })
+        .catch(error => {
+            console.error('Error loading recipients:', error);
+            document.getElementById('recipient-list').innerHTML = `<p style="color: red;">Error loading recipients: ${error.message}</p>`;
         });
     
     // Global functions for the modal
     window.assignAllRecipients = function(campaignId) {
+        console.log('Assigning all recipients to campaign:', campaignId);
+        
         fetch(`/api/campaigns/${campaignId}/recipients/assign-all`, {
-            method: 'POST'
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            credentials: 'same-origin'
         })
         .then(response => response.json())
         .then(data => {
-            alert(data.success ? `Successfully assigned ${data.count} recipients!` : `Error: ${data.message}`);
+            console.log('Assign response:', data);
+            alert(data.success ? `Successfully assigned ${data.count || 0} recipients!` : `Error: ${data.message || 'Assignment failed'}`);
             if (data.success) {
-                closeModal();
-                location.reload();
+                closeRecipientModal();
+                loadCampaigns(); // Reload campaigns to show updated recipient count
             }
+        })
+        .catch(error => {
+            console.error('Error assigning recipients:', error);
+            alert('Error assigning recipients: ' + error.message);
         });
     };
     
-    window.closeModal = function() {
+    window.closeRecipientModal = function() {
         const modal = document.querySelector('div[style*="position: fixed"]');
-        if (modal) modal.remove();
+        if (modal) {
+            modal.remove();
+        }
     };
 }
 
@@ -169,6 +197,7 @@ function loadCampaigns() {
                 const successRate = campaign.success_rate || 0;
                 const dailyVolume = campaign.daily_volume || 0;
                 const warmupDays = campaign.warmup_days || 0;
+                const recipientCount = campaign.recipient_count || 0;
                 
                 html += `
                     <div class="px-6 py-4">
@@ -191,11 +220,12 @@ function loadCampaigns() {
                                 <div class="mt-2 flex items-center text-sm text-gray-500">
                                     <span class="mr-4">📨 ${emailsSent} sent</span>
                                     <span class="mr-4">✅ ${successRate}% success</span>
-                                    <span>📅 ${warmupDays} days</span>
+                                    <span class="mr-4">📅 ${warmupDays} days</span>
+                                    <span class="mr-4">👥 ${recipientCount} recipients</span>
                                 </div>
                             </div>
                             <div class="flex items-center space-x-2">
-                                <button onclick="manageCampaignRecipients(${campaign.id})" class="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-purple-700 bg-purple-100 hover:bg-purple-200">
+                                <button onclick="manageCampaignRecipients(${campaign.id})" class="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-purple-700 bg-purple-100 hover:bg-purple-200" title="Manage Recipients">
                                     <i class="fas fa-users mr-1"></i> 👥
                                 </button>
                                 ${campaign.status === 'active' ? 
@@ -299,7 +329,6 @@ async function pauseCampaign(id) {
 
 function viewCampaign(id) {
     console.log('Viewing campaign:', id);
-    // For now, just show an alert. You can implement a detailed view later
     alert(`Campaign details for ID: ${id}`);
 }
 
@@ -325,7 +354,6 @@ async function deleteCampaign(id, name) {
         });
         
         console.log('Delete response status:', response.status);
-        console.log('Delete response headers:', response.headers);
         
         // Check for authentication issues
         if (response.status === 401) {
@@ -356,10 +384,8 @@ async function deleteCampaign(id, name) {
             alert('Campaign deleted successfully!');
             loadCampaigns(); // Reload the list
         } else if (data.error) {
-            // Handle API error responses
             alert('Error: ' + data.error);
         } else {
-            // Handle failed responses
             alert('Error: ' + (data.message || 'Failed to delete campaign'));
         }
     } catch (error) {
