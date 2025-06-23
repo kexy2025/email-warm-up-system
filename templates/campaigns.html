@@ -35,7 +35,78 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 <script>
+// Create the dashboard object if it doesn't exist
+if (typeof window.dashboard === 'undefined') {
+    window.dashboard = {};
+}
+
+// Add the manageCampaignRecipients function to the dashboard object
+window.dashboard.manageCampaignRecipients = function(campaignId) {
+    console.log('Managing recipients for campaign:', campaignId);
+    
+    // Create and show a simple modal
+    const modal = document.createElement('div');
+    modal.style.cssText = `
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+        background: rgba(0,0,0,0.5); display: flex; align-items: center; 
+        justify-content: center; z-index: 9999;
+    `;
+    
+    modal.innerHTML = `
+        <div style="background: white; padding: 20px; border-radius: 8px; max-width: 400px;">
+            <h3>Assign Recipients to Campaign ${campaignId}</h3>
+            <p>Available Recipients:</p>
+            <div id="recipient-list">Loading...</div>
+            <div style="margin-top: 15px;">
+                <button onclick="assignAllRecipients(${campaignId})" style="background: #007bff; color: white; padding: 8px 16px; border: none; border-radius: 4px; margin-right: 10px;">Assign All Active Recipients</button>
+                <button onclick="closeModal()" style="background: #6c757d; color: white; padding: 8px 16px; border: none; border-radius: 4px;">Close</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    // Load recipients
+    fetch('/api/recipients')
+        .then(response => response.json())
+        .then(data => {
+            const listEl = document.getElementById('recipient-list');
+            if (data.recipients && data.recipients.length > 0) {
+                listEl.innerHTML = data.recipients.map(r => 
+                    `<div style="padding: 5px; border-bottom: 1px solid #eee;">
+                        <strong>${r.name}</strong> (${r.email}) - ${r.status}
+                    </div>`
+                ).join('');
+            } else {
+                listEl.innerHTML = '<p>No recipients found</p>';
+            }
+        });
+    
+    // Global functions for the modal
+    window.assignAllRecipients = function(campaignId) {
+        fetch(`/api/campaigns/${campaignId}/recipients/assign-all`, {
+            method: 'POST'
+        })
+        .then(response => response.json())
+        .then(data => {
+            alert(data.success ? `Successfully assigned ${data.count} recipients!` : `Error: ${data.message}`);
+            if (data.success) {
+                closeModal();
+                location.reload();
+            }
+        });
+    };
+    
+    window.closeModal = function() {
+        const modal = document.querySelector('div[style*="position: fixed"]');
+        if (modal) modal.remove();
+    };
+};
+
+console.log('Dashboard object with manageCampaignRecipients created');
+
 // Enhanced authentication check
 async function checkAuthStatus() {
     try {
@@ -131,6 +202,9 @@ function loadCampaigns() {
                                 </div>
                             </div>
                             <div class="flex items-center space-x-2">
+                                <button onclick="dashboard.manageCampaignRecipients(${campaign.id})" class="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-purple-700 bg-purple-100 hover:bg-purple-200">
+                                    <i class="fas fa-users mr-1"></i> 👥
+                                </button>
                                 ${campaign.status === 'active' ? 
                                     `<button onclick="pauseCampaign(${campaign.id})" class="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-yellow-700 bg-yellow-100 hover:bg-yellow-200">
                                         <i class="fas fa-pause mr-1"></i> Pause
@@ -268,8 +342,8 @@ async function deleteCampaign(id, name) {
         }
         
         if (response.status === 403) {
-        const errorData = await response.json();
-        alert(errorData.error || 'You do not have permission to delete this campaign.');
+            const errorData = await response.json();
+            alert(errorData.error || 'You do not have permission to delete this campaign.');
             return;
         }
         
@@ -303,18 +377,5 @@ async function deleteCampaign(id, name) {
 
 // Load campaigns when page loads
 document.addEventListener('DOMContentLoaded', loadCampaigns);
-</script>
-</script>
-<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
-<script>
-// Direct function - no dependencies
-function manageCampaignRecipients(campaignId) {
-    console.log('Button clicked for campaign:', campaignId);
-    alert('Managing recipients for campaign ' + campaignId + '. Redirecting to recipients page...');
-    window.location.href = '/recipients';
-}
-
-// Test if it works
-console.log('manageCampaignRecipients function created');
 </script>
 {% endblock %}
