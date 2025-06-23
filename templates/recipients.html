@@ -143,11 +143,6 @@
                     <p class="text-gray-500 mt-2">Loading recipients...</p>
                 </div>
             </div>
-            
-            <!-- Pagination -->
-            <div id="pagination-container" class="px-6 py-4 border-t border-gray-200">
-                <!-- Pagination will be loaded here -->
-            </div>
         </div>
     </div>
 </div>
@@ -201,6 +196,62 @@
                 <button type="submit" 
                         class="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700">
                     Add Recipient
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Edit Recipient Modal -->
+<div id="edit-recipient-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+    <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+        <div class="flex justify-between items-center mb-4">
+            <h3 class="text-lg font-medium text-gray-900">Edit Recipient</h3>
+            <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        
+        <form id="edit-recipient-form">
+            <input type="hidden" id="edit-recipient-id">
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
+                    <input type="email" id="edit-recipient-email" required 
+                           class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+                    <input type="text" id="edit-recipient-name" required 
+                           class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                    <select id="edit-recipient-category" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">
+                        <option value="General">General</option>
+                        <option value="Business">Business</option>
+                        <option value="Personal">Personal</option>
+                        <option value="Marketing">Marketing</option>
+                        <option value="Support">Support</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                    <select id="edit-recipient-status" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="flex justify-end space-x-3 mt-6">
+                <button type="button" onclick="closeModal()" 
+                        class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
+                    Cancel
+                </button>
+                <button type="submit" 
+                        class="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700">
+                    Update Recipient
                 </button>
             </div>
         </form>
@@ -269,59 +320,89 @@
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 <script>
-// SIMPLE FIX - Just make the edit icon work
-function editRecipient(recipientId) {
-    alert('Edit Recipient ID: ' + recipientId + ' - Function is working!');
-    // Remove this alert and add your edit functionality here
-}
+// Global variables
+let recipientsData = [];
 
-// Simple function to load and display recipients
+// Load recipients data with proper error handling
 function loadRecipients() {
     console.log('Loading recipients...');
+    showLoading();
     
-    fetch('/api/recipients')
-        .then(response => {
-            console.log('API Response Status:', response.status);
-            return response.json();
-        })
-        .then(data => {
-            console.log('API Response Data:', data);
-            
-            // Handle different response formats
-            let recipients = [];
-            if (data.recipients) {
-                recipients = data.recipients;
-            } else if (Array.isArray(data)) {
-                recipients = data;
-            } else if (data) {
-                recipients = [data];
-            }
-            
-            displayRecipients(recipients);
-        })
-        .catch(error => {
-            console.error('Error loading recipients:', error);
-            document.getElementById('recipients-list').innerHTML = `
-                <div class="text-center py-8">
-                    <i class="fas fa-exclamation-triangle text-red-400 text-xl"></i>
-                    <p class="text-red-500 mt-2">Error loading recipients: ${error.message}</p>
-                    <button onclick="loadRecipients()" class="mt-4 px-4 py-2 bg-blue-600 text-white rounded-md">
-                        Try Again
-                    </button>
-                </div>
-            `;
-        });
+    const search = document.getElementById('search-input').value;
+    const category = document.getElementById('category-filter').value;
+    const status = document.getElementById('status-filter').value;
+    
+    let url = '/api/recipients?';
+    if (search) url += `search=${encodeURIComponent(search)}&`;
+    if (category) url += `category=${encodeURIComponent(category)}&`;
+    if (status) url += `status=${encodeURIComponent(status)}&`;
+    
+    fetch(url, {
+        credentials: 'same-origin',
+        headers: {
+            'Cache-Control': 'no-cache'
+        }
+    })
+    .then(response => {
+        if (response.status === 401 || response.status === 403) {
+            window.location.href = '/login';
+            return;
+        }
+        return response.json();
+    })
+    .then(data => {
+        console.log('Recipients API response:', data);
+        
+        // Handle different response formats
+        if (data.recipients) {
+            recipientsData = data.recipients;
+        } else if (Array.isArray(data)) {
+            recipientsData = data;
+        } else if (data) {
+            recipientsData = [data];
+        } else {
+            recipientsData = [];
+        }
+        
+        updateStats();
+        displayRecipients();
+        hideLoading();
+    })
+    .catch(error => {
+        console.error('Error loading recipients:', error);
+        showToast('Error loading recipients: ' + error.message, 'error');
+        hideLoading();
+    });
 }
 
-function displayRecipients(recipients) {
+// Update statistics
+function updateStats() {
+    const total = recipientsData.length;
+    const active = recipientsData.filter(r => r.status === 'active' || r.status === 'ACTIVE').length;
+    const recentlyEmailed = recipientsData.filter(r => r.last_emailed).length;
+    const avgSuccessRate = recipientsData.length > 0 ? 
+        Math.round(recipientsData.reduce((sum, r) => sum + (r.success_rate || 0), 0) / recipientsData.length) : 0;
+    
+    document.getElementById('total-recipients').textContent = total;
+    document.getElementById('active-recipients').textContent = active;
+    document.getElementById('recently-emailed').textContent = recentlyEmailed;
+    document.getElementById('avg-success-rate').textContent = avgSuccessRate + '%';
+}
+
+// Display recipients
+function displayRecipients() {
     const container = document.getElementById('recipients-list');
     
-    if (!recipients || recipients.length === 0) {
+    if (!recipientsData || recipientsData.length === 0) {
         container.innerHTML = `
-            <div class="text-center py-8">
+            <div class="text-center py-12">
                 <i class="fas fa-users text-gray-400 text-4xl mb-4"></i>
                 <h3 class="text-lg font-medium text-gray-900 mb-2">No recipients found</h3>
-                <p class="text-gray-500">Add your first recipient to get started.</p>
+                <p class="text-gray-500 mb-4">Start by adding your first recipient to begin email warmup.</p>
+                <button onclick="showAddRecipientModal()" class="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+                    <i class="fas fa-plus mr-2"></i>
+                    Add First Recipient
+                </button>
             </div>
         `;
         return;
@@ -329,29 +410,33 @@ function displayRecipients(recipients) {
     
     let html = '<div class="space-y-4">';
     
-    recipients.forEach(recipient => {
+    recipientsData.forEach(recipient => {
+        const statusClass = (recipient.status === 'active' || recipient.status === 'ACTIVE') ? 
+            'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800';
+        
         html += `
-            <div class="border border-gray-200 rounded-lg p-4">
+            <div class="border border-gray-200 rounded-lg p-4 hover:bg-gray-50">
                 <div class="flex items-center justify-between">
-                    <div>
-                        <h4 class="text-lg font-medium text-gray-900">${recipient.name || 'No Name'}</h4>
-                        <p class="text-sm text-gray-600">${recipient.email || 'No Email'}</p>
-                        <div class="mt-1 text-xs text-gray-500">
-                            <span class="mr-4">📂 ${recipient.category || 'General'}</span>
-                            <span class="px-2 py-1 rounded-full text-xs font-medium ${
-                                (recipient.status === 'active' || recipient.status === 'ACTIVE') ? 
-                                'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                            }">
+                    <div class="flex-1">
+                        <div class="flex items-center">
+                            <h4 class="text-lg font-medium text-gray-900">${recipient.name || 'No Name'}</h4>
+                            <span class="ml-3 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusClass}">
                                 ${recipient.status ? recipient.status.toUpperCase() : 'UNKNOWN'}
                             </span>
                         </div>
+                        <p class="text-sm text-gray-600">${recipient.email || 'No Email'}</p>
+                        <div class="mt-1 flex items-center text-xs text-gray-500">
+                            <span class="mr-4">📂 ${recipient.category || 'General'}</span>
+                            ${recipient.last_emailed ? `<span class="mr-4">📨 Last: ${new Date(recipient.last_emailed).toLocaleDateString()}</span>` : ''}
+                            ${recipient.success_rate ? `<span>✅ ${recipient.success_rate}% success</span>` : ''}
+                        </div>
                     </div>
                     <div class="flex items-center space-x-2">
-                        <button onclick="editRecipient('${recipient.id}')" 
+                        <button onclick="editRecipient(${recipient.id})" 
                                 class="text-blue-600 hover:text-blue-800 p-1" title="Edit Recipient">
                             <i class="fas fa-edit"></i>
                         </button>
-                        <button onclick="deleteRecipient('${recipient.id}')" 
+                        <button onclick="deleteRecipient(${recipient.id}, '${(recipient.name || recipient.email || 'recipient').replace(/'/g, "\\'")}'))" 
                                 class="text-red-600 hover:text-red-800 p-1" title="Delete Recipient">
                             <i class="fas fa-trash"></i>
                         </button>
@@ -365,28 +450,219 @@ function displayRecipients(recipients) {
     container.innerHTML = html;
 }
 
-function deleteRecipient(recipientId) {
-    if (confirm('Are you sure you want to delete this recipient?')) {
-        alert('Delete Recipient ID: ' + recipientId + ' - Function is working!');
-        // Add your delete functionality here
+// Edit recipient - WORKING VERSION
+function editRecipient(recipientId) {
+    console.log('Editing recipient:', recipientId);
+    
+    // Find the recipient data
+    const recipient = recipientsData.find(r => r.id == recipientId);
+    if (!recipient) {
+        showToast('Recipient not found', 'error');
+        return;
     }
+    
+    // Populate the edit form
+    document.getElementById('edit-recipient-id').value = recipient.id;
+    document.getElementById('edit-recipient-email').value = recipient.email || '';
+    document.getElementById('edit-recipient-name').value = recipient.name || '';
+    document.getElementById('edit-recipient-category').value = recipient.category || 'General';
+    document.getElementById('edit-recipient-status').value = recipient.status || 'active';
+    
+    // Show the edit modal
+    showModal('edit-recipient-modal');
 }
 
-function showAddRecipientModal() {
-    alert('Add Recipient Modal - Function is working!');
+// Delete recipient
+function deleteRecipient(recipientId, recipientName) {
+    if (!confirm(`Are you sure you want to delete "${recipientName}"?\n\nThis action cannot be undone.`)) {
+        return;
+    }
+    
+    showLoading();
+    
+    fetch(`/api/recipients/${recipientId}`, {
+        method: 'DELETE',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        credentials: 'same-origin'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showToast('Recipient deleted successfully!', 'success');
+            loadRecipients(); // Reload the list
+        } else {
+            showToast('Error: ' + (data.message || 'Failed to delete recipient'), 'error');
+        }
+        hideLoading();
+    })
+    .catch(error => {
+        console.error('Error deleting recipient:', error);
+        showToast('Error deleting recipient: ' + error.message, 'error');
+        hideLoading();
+    });
 }
 
-function showBulkImportModal() {
-    alert('Bulk Import Modal - Function is working!');
+// Modal functions
+function showModal(modalId) {
+    document.getElementById(modalId).classList.remove('hidden');
+    document.getElementById(modalId).classList.add('flex');
 }
 
 function closeModal() {
-    alert('Close Modal - Function is working!');
+    const modals = ['add-recipient-modal', 'edit-recipient-modal', 'bulk-import-modal'];
+    modals.forEach(modalId => {
+        const modal = document.getElementById(modalId);
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    });
 }
 
-// Load recipients when page loads
+function showAddRecipientModal() {
+    document.getElementById('add-recipient-form').reset();
+    showModal('add-recipient-modal');
+}
+
+function showBulkImportModal() {
+    showModal('bulk-import-modal');
+}
+
+// Loading functions
+function showLoading() {
+    document.getElementById('loading-overlay').classList.remove('hidden');
+    document.getElementById('loading-overlay').classList.add('flex');
+}
+
+function hideLoading() {
+    document.getElementById('loading-overlay').classList.add('hidden');
+    document.getElementById('loading-overlay').classList.remove('flex');
+}
+
+// Toast notification function
+function showToast(message, type = 'info') {
+    const toast = document.createElement('div');
+    const bgColor = type === 'error' ? 'bg-red-500' : type === 'success' ? 'bg-green-500' : 'bg-blue-500';
+    
+    toast.className = `${bgColor} text-white px-4 py-2 rounded-md shadow-lg flex items-center space-x-2`;
+    toast.innerHTML = `
+        <span>${message}</span>
+        <button onclick="this.parentElement.remove()" class="text-white hover:text-gray-200">
+            <i class="fas fa-times"></i>
+        </button>
+    `;
+    
+    document.getElementById('toast-container').appendChild(toast);
+    
+    // Auto remove after 5 seconds
+    setTimeout(() => {
+        if (toast.parentElement) {
+            toast.remove();
+        }
+    }, 5000);
+}
+
+// Form submissions
+document.getElementById('add-recipient-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const formData = {
+        email: document.getElementById('recipient-email').value,
+        name: document.getElementById('recipient-name').value,
+        category: document.getElementById('recipient-category').value,
+        status: document.getElementById('recipient-status').value
+    };
+    
+    showLoading();
+    
+    fetch('/api/recipients', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        credentials: 'same-origin',
+        body: JSON.stringify(formData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showToast('Recipient added successfully!', 'success');
+            closeModal();
+            loadRecipients();
+        } else {
+            showToast('Error: ' + (data.message || 'Failed to add recipient'), 'error');
+        }
+        hideLoading();
+    })
+    .catch(error => {
+        console.error('Error adding recipient:', error);
+        showToast('Error adding recipient: ' + error.message, 'error');
+        hideLoading();
+    });
+});
+
+document.getElementById('edit-recipient-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const recipientId = document.getElementById('edit-recipient-id').value;
+    const formData = {
+        email: document.getElementById('edit-recipient-email').value,
+        name: document.getElementById('edit-recipient-name').value,
+        category: document.getElementById('edit-recipient-category').value,
+        status: document.getElementById('edit-recipient-status').value
+    };
+    
+    showLoading();
+    
+    fetch(`/api/recipients/${recipientId}`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        credentials: 'same-origin',
+        body: JSON.stringify(formData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showToast('Recipient updated successfully!', 'success');
+            closeModal();
+            loadRecipients();
+        } else {
+            showToast('Error: ' + (data.message || 'Failed to update recipient'), 'error');
+        }
+        hideLoading();
+    })
+    .catch(error => {
+        console.error('Error updating recipient:', error);
+        showToast('Error updating recipient: ' + error.message, 'error');
+        hideLoading();
+    });
+});
+
+// Initialize page
 document.addEventListener('DOMContentLoaded', function() {
     loadRecipients();
+    
+    // Add event listeners for filters
+    document.getElementById('search-input').addEventListener('input', function() {
+        clearTimeout(this.searchTimeout);
+        this.searchTimeout = setTimeout(() => loadRecipients(), 500);
+    });
+    
+    document.getElementById('category-filter').addEventListener('change', loadRecipients);
+    document.getElementById('status-filter').addEventListener('change', loadRecipients);
+});
+
+// Close modals when clicking outside
+window.addEventListener('click', function(e) {
+    const modals = ['add-recipient-modal', 'edit-recipient-modal', 'bulk-import-modal'];
+    modals.forEach(modalId => {
+        const modal = document.getElementById(modalId);
+        if (e.target === modal) {
+            closeModal();
+        }
+    });
 });
 </script>
 {% endblock %}
