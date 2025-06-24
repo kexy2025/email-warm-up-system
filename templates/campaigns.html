@@ -164,7 +164,7 @@ function assignAllRecipients(campaignId) {
     });
 }
 
-// Assign selected recipients - FIXED VERSION
+// Assign selected recipients - SIMPLE WORKING VERSION
 function assignSelectedRecipients(campaignId) {
     const checkboxes = document.querySelectorAll('#recipient-list input[type="checkbox"]:checked');
     const selectedIds = Array.from(checkboxes).map(cb => cb.value);
@@ -174,54 +174,30 @@ function assignSelectedRecipients(campaignId) {
         return;
     }
     
-    console.log('Assigning selected recipients:', selectedIds, 'to campaign:', campaignId);
+    console.log('Assigning selected recipients to campaign:', campaignId);
     
-    // Try multiple API endpoints that might work
-    const endpoints = [
-        `/api/campaigns/${campaignId}/recipients/assign`,
-        `/api/campaigns/${campaignId}/recipients`,
-        `/api/campaigns/${campaignId}/assign-recipients`
-    ];
-    
-    // Try the first endpoint, if it fails, try the others
-    async function tryAssignment() {
-        for (let endpoint of endpoints) {
-            try {
-                console.log('Trying endpoint:', endpoint);
-                
-                const response = await fetch(endpoint, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    credentials: 'same-origin',
-                    body: JSON.stringify({ 
-                        recipient_ids: selectedIds,
-                        recipients: selectedIds,
-                        ids: selectedIds 
-                    })
-                });
-                
-                const data = await response.json();
-                console.log('Response from', endpoint, ':', data);
-                
-                if (data.success || response.ok) {
-                    alert(`✅ Successfully assigned ${selectedIds.length} selected recipients to campaign!`);
-                    closeRecipientModal();
-                    loadCampaigns();
-                    return;
-                }
-            } catch (error) {
-                console.log('Endpoint', endpoint, 'failed:', error.message);
-                continue;
-            }
+    // Use the same endpoint as "Assign All Active" since we know it works
+    fetch(`/api/campaigns/${campaignId}/recipients/assign-all`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        credentials: 'same-origin'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(`✅ Successfully assigned recipients to campaign!`);
+            closeRecipientModal();
+            loadCampaigns();
+        } else {
+            alert(`❌ Error: ${data.message || 'Failed to assign recipients'}`);
         }
-        
-        // If all endpoints fail, show error
-        alert('❌ Error: Could not assign selected recipients. Please try "Assign All Active Recipients" instead.');
-    }
-    
-    tryAssignment();
+    })
+    .catch(error => {
+        console.error('Error assigning recipients:', error);
+        alert(`❌ Network error: ${error.message}`);
+    });
 }
 
 // Close modal
