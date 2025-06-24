@@ -890,11 +890,11 @@ def create_initial_recipients():
         logger.error(f"Failed to create initial recipients: {str(e)}")
         return False
 
-# Enhanced Recipient Management Functions
+# ✅ FIXED: Enhanced Recipient Management Functions - ONLY USER'S REAL RECIPIENTS
 def get_campaign_recipients(campaign_id, count=10):
-    """Get recipients assigned to a specific campaign"""
+    """Get recipients assigned to a specific campaign - ONLY USER'S REAL RECIPIENTS"""
     try:
-        # Get assigned recipients for this campaign
+        # Get assigned recipients for this campaign (USER'S RECIPIENTS ONLY)
         campaign_recipients = db.session.query(Recipient)\
             .join(CampaignRecipient)\
             .filter(CampaignRecipient.campaign_id == campaign_id)\
@@ -909,19 +909,16 @@ def get_campaign_recipients(campaign_id, count=10):
                 'email': r.email,
                 'name': r.name,
                 'category': r.category,
-                'responds': True  # Default for campaign recipients
+                'responds': True
             })
         
-        # If no assigned recipients, fallback to warmup recipients
-        if not recipient_list:
-            logger.warning(f"No assigned recipients for campaign {campaign_id}, using warmup recipients")
-            return get_warmup_recipients(count)
-        
+        # ✅ FIXED: NO FALLBACK TO FAKE RECIPIENTS
+        logger.info(f"Found {len(recipient_list)} real recipients for campaign {campaign_id}")
         return recipient_list
         
     except Exception as e:
         logger.error(f"Error getting campaign recipients: {str(e)}")
-        return get_warmup_recipients(count)  # Fallback
+        return []  # Return empty list instead of fake recipients
 
 def get_warmup_recipients(count=10, industry_filter=None, exclude_recently_emailed=True):
     """Get warmup recipients from database with intelligent selection"""
@@ -961,7 +958,8 @@ def get_warmup_recipients(count=10, industry_filter=None, exclude_recently_email
                 'industry': r.industry,
                 'responds': r.responds
             })
-# If we don't have enough recipients, fall back to the hardcoded list
+
+        # If we don't have enough recipients, fall back to the hardcoded list
         if len(recipient_list) < count:
             logger.warning(f"Only found {len(recipient_list)} recipients in database, falling back to hardcoded list")
             fallback_needed = count - len(recipient_list)
@@ -1210,7 +1208,7 @@ def calculate_campaign_progress(campaign):
     except:
         return 0
 
-# Background Scheduler Functions (safe scheduling)
+# ✅ FIXED: Background Scheduler Functions - ONLY USER'S REAL RECIPIENTS
 def process_warmup_campaigns():
     """Process all active campaigns for email sending with enhanced recipient management"""
     try:
@@ -1237,19 +1235,16 @@ def process_warmup_campaigns():
                     emails_to_send = max(0, campaign.daily_volume - today_emails)
                     
                     if emails_to_send > 0:
-                        # Get recipients using the new intelligent selection
+                        # Get recipients using the new intelligent selection - ONLY USER'S REAL RECIPIENTS
                         recipients = get_campaign_recipients(
                             campaign.id,
                             count=emails_to_send
                         )
                         
-                        # If no campaign-specific recipients, use warmup recipients
+                        # ✅ FIXED: NO FALLBACK TO FAKE RECIPIENTS
                         if not recipients:
-                            recipients = get_warmup_recipients(
-                                count=emails_to_send,
-                                industry_filter=campaign.industry if campaign.industry != 'business' else None,
-                                exclude_recently_emailed=True
-                            )
+                            logger.info(f"⏭️ Skipping campaign '{campaign.name}': No recipients assigned")
+                            continue
                         
                         logger.info(f"📋 Selected {len(recipients)} recipients for '{campaign.name}'")
                         
@@ -1478,8 +1473,8 @@ def api_login():
             return jsonify({'success': False, 'message': 'Email and password are required'}), 400
         
         user = User.query.filter_by(email=email).first()
-        
-        # Log login attempt
+
+# Log login attempt
         ip_address = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
         
         if user and user.check_password(password) and user.is_active:
@@ -2286,7 +2281,7 @@ def campaigns():
             if provider not in SMTP_PROVIDERS:
                 return jsonify({'success': False, 'message': 'Invalid provider'}), 400
 
-            # Create campaign for current user
+# Create campaign for current user
             campaign = Campaign(
                 name=data['name'],
                 email=data['email'],
@@ -2304,8 +2299,26 @@ def campaigns():
             db.session.add(campaign)
             db.session.commit()
 
+            # ✅ FIXED: Check if user has any active recipients
+            user_recipients_count = Recipient.query.filter_by(user_id=current_user.id, status='active').count()
+
             logger.info(f"Campaign created: {campaign.name} for user {current_user.username}")
-            return jsonify({'success': True, 'message': 'Campaign created successfully', 'campaign': campaign.to_dict()})
+
+            if user_recipients_count == 0:
+                return jsonify({
+                    'success': True, 
+                    'message': 'Campaign created successfully! Please assign recipients to start sending emails.',
+                    'campaign': campaign.to_dict(),
+                    'requires_recipients': True,
+                    'redirect_to_recipients': True
+                })
+            else:
+                return jsonify({
+                    'success': True, 
+                    'message': 'Campaign created successfully', 
+                    'campaign': campaign.to_dict(),
+                    'requires_recipients': False
+                })
 
         except Exception as e:
             logger.error(f"Campaign creation error: {str(e)}")
@@ -2901,7 +2914,7 @@ def handle_unexpected_error(error):
         </html>
         ''', 500
 
-# Database Initialization (REMOVED from here - will be called later)
+# Database Initialization
 def create_tables():
     """Create database tables with error handling"""
     try:
@@ -2931,6 +2944,9 @@ if __name__ == '__main__':
         
         # Start background scheduler
         start_warmup_scheduler()
+        
+        # Start ProtonMail multi-account monitoring
+        protonmail_multi_reply.start_monitoring()
         
         # Get port from environment
         port = int(os.environ.get('PORT', 5000))
