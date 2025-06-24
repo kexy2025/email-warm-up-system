@@ -39,7 +39,70 @@
 <script>
 // DEFINE ALL FUNCTIONS IMMEDIATELY
 function manageCampaignRecipients(campaignId) {
-    alert('Managing recipients for campaign: ' + campaignId + ' - Button works!');
+    console.log('Managing recipients for campaign:', campaignId);
+    
+    // Create modal
+    const modal = document.createElement('div');
+    modal.style.cssText = `
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+        background: rgba(0,0,0,0.5); display: flex; align-items: center; 
+        justify-content: center; z-index: 9999;
+    `;
+    
+    modal.innerHTML = `
+        <div style="background: white; padding: 20px; border-radius: 8px; max-width: 400px;">
+            <h3>Assign Recipients to Campaign ${campaignId}</h3>
+            <p>Available Recipients:</p>
+            <div id="recipient-list" style="max-height: 200px; overflow-y: auto; margin: 10px 0;">Loading...</div>
+            <div style="margin-top: 15px;">
+                <button onclick="assignAllRecipients(${campaignId})" style="background: #007bff; color: white; padding: 8px 16px; border: none; border-radius: 4px; margin-right: 10px;">Assign All Active Recipients</button>
+                <button onclick="closeModal()" style="background: #6c757d; color: white; padding: 8px 16px; border: none; border-radius: 4px;">Close</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    // Load recipients
+    fetch('/api/recipients')
+        .then(response => response.json())
+        .then(data => {
+            const listEl = document.getElementById('recipient-list');
+            let recipients = data.recipients || data || [];
+            if (recipients && recipients.length > 0) {
+                listEl.innerHTML = recipients.map(r => 
+                    `<div style="padding: 5px; border-bottom: 1px solid #eee;">
+                        <input type="checkbox" value="${r.id}" style="margin-right: 5px;">
+                        <strong>${r.name || 'No Name'}</strong> (${r.email || 'No Email'}) - ${r.status || 'Unknown'}
+                    </div>`
+                ).join('');
+            } else {
+                listEl.innerHTML = '<p>No recipients found. <a href="/recipients" style="color: #007bff;">Add recipients first</a></p>';
+            }
+        })
+        .catch(error => {
+            console.error('Error loading recipients:', error);
+            document.getElementById('recipient-list').innerHTML = `<p style="color: red;">Error loading recipients: ${error.message}</p>`;
+        });
+    
+    window.assignAllRecipients = function(campaignId) {
+        fetch(`/api/campaigns/${campaignId}/recipients/assign-all`, {
+            method: 'POST'
+        })
+        .then(response => response.json())
+        .then(data => {
+            alert(data.success ? `Successfully assigned ${data.count} recipients!` : `Error: ${data.message}`);
+            if (data.success) {
+                closeModal();
+                location.reload();
+            }
+        });
+    };
+    
+    window.closeModal = function() {
+        const modal = document.querySelector('div[style*="position: fixed"]');
+        if (modal) modal.remove();
+    };
 }
 
 // Enhanced authentication check
